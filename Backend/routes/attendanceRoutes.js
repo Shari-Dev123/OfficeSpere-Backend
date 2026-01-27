@@ -14,7 +14,7 @@ const { protect, authorize } = require('../middleware/auth');
 // @desc    Get all attendance records with filters
 // @access  Admin
 router.get(
-  '/admin/attendance',
+  '/admin',
   protect,
   authorize('admin'),
   attendanceController.getAllAttendance
@@ -24,7 +24,7 @@ router.get(
 // @desc    Get daily attendance report
 // @access  Admin
 router.get(
-  '/admin/attendance/daily',
+  '/admin/daily',
   protect,
   authorize('admin'),
   attendanceController.getDailyAttendance
@@ -34,7 +34,7 @@ router.get(
 // @desc    Get monthly attendance report
 // @access  Admin
 router.get(
-  '/admin/attendance/monthly',
+  '/admin/monthly',
   protect,
   authorize('admin'),
   attendanceController.getMonthlyAttendance
@@ -44,7 +44,7 @@ router.get(
 // @desc    Generate attendance report with statistics
 // @access  Admin
 router.get(
-  '/admin/attendance/report',
+  '/admin/report',
   protect,
   authorize('admin'),
   attendanceController.getAttendanceReport
@@ -54,7 +54,7 @@ router.get(
 // @desc    Get late arrival records
 // @access  Admin
 router.get(
-  '/admin/attendance/late-arrivals',
+  '/admin/late-arrivals',
   protect,
   authorize('admin'),
   attendanceController.getLateArrivals
@@ -64,7 +64,7 @@ router.get(
 // @desc    Get specific employee's attendance history
 // @access  Admin
 router.get(
-  '/admin/attendance/employee/:employeeId',
+  '/admin/employee/:employeeId',
   protect,
   authorize('admin'),
   attendanceController.getEmployeeAttendance
@@ -74,7 +74,7 @@ router.get(
 // @desc    Get pending correction requests
 // @access  Admin
 router.get(
-  '/admin/attendance/corrections/pending',
+  '/admin/corrections/pending',
   protect,
   authorize('admin'),
   attendanceController.getPendingCorrections
@@ -84,7 +84,7 @@ router.get(
 // @desc    Approve attendance correction request
 // @access  Admin
 router.put(
-  '/admin/attendance/correction/:id/approve',
+  '/admin/correction/:id/approve',
   protect,
   authorize('admin'),
   attendanceController.approveCorrection
@@ -94,7 +94,7 @@ router.put(
 // @desc    Reject attendance correction request
 // @access  Admin
 router.put(
-  '/admin/attendance/correction/:id/reject',
+  '/admin/correction/:id/reject',
   protect,
   authorize('admin'),
   attendanceController.rejectCorrection
@@ -104,7 +104,7 @@ router.put(
 // @desc    Delete attendance record (admin only)
 // @access  Admin
 router.delete(
-  '/admin/attendance/:id',
+  '/admin/:id',
   protect,
   authorize('admin'),
   attendanceController.deleteAttendance
@@ -114,7 +114,7 @@ router.delete(
 // @desc    Export attendance data to CSV/Excel
 // @access  Admin
 router.get(
-  '/admin/attendance/export',
+  '/admin/export',
   protect,
   authorize('admin'),
   attendanceController.exportAttendance

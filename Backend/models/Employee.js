@@ -1,10 +1,10 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const employeeSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
       unique: true,
     },
@@ -16,26 +16,36 @@ const employeeSchema = new mongoose.Schema(
     },
     designation: {
       type: String,
-      required: [true, 'Please provide designation'],
+      required: [true, "Please provide designation"],
     },
     department: {
       type: String,
-      required: [true, 'Please provide department'],
-      enum: ['Development', 'Design', 'Marketing', 'Sales', 'HR', 'Finance', 'Operations', 'Management'],
+      required: [true, "Please provide department"],
+      enum: [
+        "Development",
+        "Design",
+        "Marketing",
+        "Sales",
+        "HR",
+        "Finance",
+        "Operations",
+        "Management",
+      ],
     },
     joiningDate: {
       type: Date,
-      required: [true, 'Please provide joining date'],
+      required: [true, "Please provide joining date"],
       default: Date.now,
     },
     salary: {
       type: Number,
-      required: [true, 'Please provide salary'],
+      required: [true, "Please provide salary"],
       min: 0,
+      default: 0,
     },
     reportingTo: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Employee',
+      ref: "Employee",
       default: null,
     },
     skills: {
@@ -45,6 +55,22 @@ const employeeSchema = new mongoose.Schema(
     experience: {
       type: Number, // in years
       default: 0,
+    },
+    dateOfBirth: {
+      type: Date,
+      default: null,
+    },
+
+    bloodGroup: {
+      type: String,
+      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", ""],
+      default: "",
+    },
+
+    bio: {
+      type: String,
+      default: "",
+      maxlength: 500,
     },
     address: {
       street: String,
@@ -91,10 +117,10 @@ const employeeSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Index for faster queries
 employeeSchema.index({ department: 1 });
 
-module.exports = mongoose.model('Employee', employeeSchema);
+module.exports = mongoose.model("Employee", employeeSchema);
