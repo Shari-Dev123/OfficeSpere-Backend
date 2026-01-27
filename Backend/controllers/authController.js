@@ -1,7 +1,7 @@
-// controllers/authController.js
-// Authentication Controller - Handles login, register, logout, token verification
-
 const User = require('../models/User');
+const Employee = require('../models/Employee');
+const Client = require('../models/Client');
+const Admin = require('../models/Admin');
 const { generateToken } = require('../utils/generateToken');
 const bcrypt = require('bcryptjs');
 
@@ -10,7 +10,7 @@ const bcrypt = require('bcryptjs');
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, phone, department, designation } = req.body;
+    const { name, email, password, role, phone, department, designation, company } = req.body;
 
     // Validate required fields
     if (!name || !email || !password || !role) {
@@ -45,18 +45,102 @@ exports.register = async (req, res) => {
       password,
       role,
       phone,
-      department,
-      designation,
       isActive: true
     };
 
-    // Create user
+    // For employee registration
+    if (role === 'employee') {
+      if (!department || !designation) {
+        return res.status(400).json({
+          success: false,
+          message: 'For employee registration, department and designation are required'
+        });
+      }
+      userData.department = department;
+      userData.designation = designation;
+    }
+
+    // For client registration
+    if (role === 'client' && company) {
+      userData.company = company;
+    }
+
+    // 1. Create User
     const user = await User.create(userData);
 
-    // Generate JWT token
+    // 2. Create Role-specific Profile
+    let roleProfile = null;
+    let profileResponse = null;
+
+    if (role === 'employee') {
+      // Generate employee ID
+      const employeeCount = await Employee.countDocuments();
+      const employeeId = `EMP${(employeeCount + 1).toString().padStart(4, '0')}`;
+      
+      roleProfile = await Employee.create({
+        userId: user._id,
+        employeeId: employeeId,
+        designation: designation,
+        department: department,
+        joiningDate: new Date(),
+        salary: 0, // Default salary, admin can update later
+        isActive: true
+      });
+
+      profileResponse = {
+        employeeId: roleProfile.employeeId,
+        designation: roleProfile.designation,
+        department: roleProfile.department,
+        joiningDate: roleProfile.joiningDate
+      };
+
+    } else if (role === 'client') {
+      // Generate client ID
+      const clientCount = await Client.countDocuments();
+      const clientId = `CLI${(clientCount + 1).toString().padStart(4, '0')}`;
+      
+      roleProfile = await Client.create({
+        userId: user._id,
+        clientId: clientId,
+        companyName: company || `${name}'s Company`,
+        companyEmail: email,
+        isActive: true
+      });
+
+      profileResponse = {
+        clientId: roleProfile.clientId,
+        companyName: roleProfile.companyName,
+        companyEmail: roleProfile.companyEmail
+      };
+
+    } else if (role === 'admin') {
+      // Only allow admin creation in specific scenarios
+      // You might want to restrict this to only be done via seed script
+      roleProfile = await Admin.create({
+        userId: user._id,
+        designation: 'System Administrator',
+        permissions: {
+          manageEmployees: true,
+          manageClients: true,
+          manageProjects: true,
+          manageTasks: true,
+          manageAttendance: true,
+          manageMeetings: true,
+          viewReports: true,
+          manageSettings: true,
+        }
+      });
+
+      profileResponse = {
+        designation: roleProfile.designation,
+        permissions: roleProfile.permissions
+      };
+    }
+
+    // 3. Generate JWT token
     const token = generateToken(user._id);
 
-    // Remove password from response
+    // 4. Prepare response
     const userResponse = {
       id: user._id,
       name: user.name,
@@ -66,18 +150,29 @@ exports.register = async (req, res) => {
       department: user.department,
       designation: user.designation,
       isActive: user.isActive,
-      createdAt: user.createdAt
+      createdAt: user.createdAt,
+      profile: profileResponse // Include role profile in response
     };
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully`,
       token,
       user: userResponse
     });
 
   } catch (error) {
     console.error('Register error:', error);
+    
+    // If user was created but role profile failed, delete the user
+    if (error.message.includes('E11000')) {
+      // Duplicate key error
+      return res.status(400).json({
+        success: false,
+        message: 'Duplicate entry detected. Please try with different details.'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Server error during registration',

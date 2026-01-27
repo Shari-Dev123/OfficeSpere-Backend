@@ -139,26 +139,99 @@ exports.getEmployeeDashboard = async (req, res) => {
 // @access  Private (Employee)
 exports.getProfile = async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const userId = req.user.id; // This is the USER ID from JWT token
 
-    const employee = await Employee.findOne({ userId: employeeId })
-      .populate('userId', 'name email createdAt')
-      .populate('managerId', 'name email');
+    console.log('📋 Fetching profile for userId:', userId);
 
-    if (!employee) {
+    // First, get user info
+    const user = await User.findById(userId).select('-password');
+    
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'Employee profile not found'
+        message: 'User not found'
       });
     }
 
+    console.log('✅ User found:', user.email);
+
+    // Get employee details using userId
+    const employee = await Employee.findOne({ userId: userId })
+      .populate('userId', 'name email phone avatar isActive createdAt')
+      .populate('reportingTo', 'userId employeeId designation department'); // Fixed: reportingTo instead of managerId
+
+    if (!employee) {
+      console.log('❌ Employee profile not found for userId:', userId);
+      return res.status(404).json({
+        success: false,
+        message: 'Employee profile not found. Please contact admin.'
+      });
+    }
+
+    console.log('✅ Employee found:', employee.employeeId);
+
+    // Prepare manager info if reportingTo exists
+    let managerInfo = null;
+    if (employee.reportingTo) {
+      // Need to populate the userId inside reportingTo
+      const reportingManager = await Employee.findById(employee.reportingTo._id)
+        .populate('userId', 'name email');
+      
+      if (reportingManager) {
+        managerInfo = {
+          name: reportingManager.userId.name,
+          email: reportingManager.userId.email,
+          employeeId: reportingManager.employeeId,
+          designation: reportingManager.designation,
+          department: reportingManager.department
+        };
+      }
+    }
+
+    // Combine user and employee data
+    const profileData = {
+      // User fields
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      avatar: user.avatar,
+      role: user.role,
+      isActive: user.isActive,
+      isEmailVerified: user.isEmailVerified,
+      lastLogin: user.lastLogin,
+      createdAt: user.createdAt,
+      
+      // Employee fields
+      employeeId: employee.employeeId,
+      employeeProfileId: employee._id, // The Employee document _id
+      designation: employee.designation,
+      department: employee.department,
+      joiningDate: employee.joiningDate,
+      salary: employee.salary,
+      reportingTo: managerInfo, // Use populated manager info
+      skills: employee.skills || [],
+      experience: employee.experience || 0,
+      address: employee.address || {},
+      emergencyContact: employee.emergencyContact || {},
+      bankDetails: employee.bankDetails || {},
+      documents: employee.documents || [],
+      performance: employee.performance || {},
+      attendance: employee.attendance || {},
+      isActive: employee.isActive,
+      createdAt: employee.createdAt,
+      updatedAt: employee.updatedAt
+    };
+
+    console.log('📦 Sending profile data for:', profileData.name);
+
     res.status(200).json({
       success: true,
-      data: employee
+      data: profileData
     });
 
   } catch (error) {
-    console.error('Get profile error:', error);
+    console.error('❌ Get profile error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -172,18 +245,37 @@ exports.getProfile = async (req, res) => {
 // @access  Private (Employee)
 exports.updateProfile = async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const userId = req.user.id;
     const {
       phone,
       address,
       dateOfBirth,
       emergencyContact,
+      emergencyPhone, // Get phone separately
       bloodGroup,
       skills,
       bio
     } = req.body;
 
-    const employee = await Employee.findOne({ userId: employeeId });
+    console.log('🔄 Updating profile for userId:', userId);
+
+    // 1. Update User document (phone, etc.)
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update user phone if provided
+    if (phone) {
+      user.phone = phone;
+      await user.save();
+    }
+
+    // 2. Update Employee document
+    const employee = await Employee.findOne({ userId: userId });
 
     if (!employee) {
       return res.status(404).json({
@@ -192,28 +284,53 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
-    // Update allowed fields
-    if (phone) employee.phone = phone;
-    if (address) employee.address = address;
+    // Parse address string into object
+    if (address) {
+      const addressParts = address.split(',').map(part => part.trim());
+      employee.address = {
+        street: addressParts[0] || '',
+        city: addressParts[1] || '',
+        state: addressParts[2] || '',
+        country: addressParts[3] || '',
+        zipCode: addressParts[4] || ''
+      };
+    }
+
     if (dateOfBirth) employee.dateOfBirth = dateOfBirth;
-    if (emergencyContact) employee.emergencyContact = emergencyContact;
+    
+    // Update emergency contact
+    if (emergencyContact || emergencyPhone) {
+      employee.emergencyContact = {
+        name: emergencyContact || employee.emergencyContact?.name || '',
+        relationship: employee.emergencyContact?.relationship || 'Family',
+        phone: emergencyPhone || employee.emergencyContact?.phone || ''
+      };
+    }
+    
     if (bloodGroup) employee.bloodGroup = bloodGroup;
-    if (skills) employee.skills = skills;
+    if (skills) employee.skills = Array.isArray(skills) ? skills : skills.split(',').map(s => s.trim());
     if (bio) employee.bio = bio;
 
     await employee.save();
 
-    const updatedEmployee = await Employee.findOne({ userId: employeeId })
+    console.log('✅ Profile updated for employee:', employee.employeeId);
+
+    // Get updated data
+    const updatedUser = await User.findById(userId).select('-password');
+    const updatedEmployee = await Employee.findOne({ userId })
       .populate('userId', 'name email');
 
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
-      data: updatedEmployee
+      data: {
+        user: updatedUser,
+        employee: updatedEmployee
+      }
     });
 
   } catch (error) {
-    console.error('Update profile error:', error);
+    console.error('❌ Update profile error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',

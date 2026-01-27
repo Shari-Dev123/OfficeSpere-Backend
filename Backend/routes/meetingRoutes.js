@@ -1,100 +1,138 @@
 // routes/meetingRoutes.js
+// ============================================
+// MEETING ROUTES - FULLY ALIGNED WITH FRONTEND
+// ============================================
+
 const express = require('express');
 const router = express.Router();
-const {
-  getAllMeetings,
-  getMeeting,
-  scheduleMeeting,
-  updateMeeting,
-  deleteMeeting,
-  addMeetingMinutes,
-  updateParticipantStatus,
-  getMyMeetings,
-  clientScheduleMeeting,
-  clientCancelMeeting
-} = require('../controllers/meetingController');
 const { protect, authorize } = require('../middleware/auth');
+const meetingController = require('../controllers/meetingController');
 
 // ============================================
-// ADMIN ROUTES - /api/admin/meetings
+// ADMIN MEETING ROUTES
+// Frontend calls: /meetings/admin/*
 // ============================================
 
-// @route   GET /api/admin/meetings
-// @desc    Get all meetings
-// @access  Private/Admin
-router.get('/admin', protect, authorize('admin'), getAllMeetings);
+// Frontend: adminAPI.getMeetings() → GET /api/meetings/admin
+router.get(
+  '/admin',
+  protect,
+  authorize('admin'),
+  meetingController.getAllMeetings
+);
 
-// @route   POST /api/admin/meetings
-// @desc    Schedule new meeting
-// @access  Private/Admin
-router.post('/admin', protect, authorize('admin'), scheduleMeeting);
+// Frontend: adminAPI.scheduleMeeting() → POST /api/meetings/admin
+router.post(
+  '/admin',
+  protect,
+  authorize('admin'),
+  meetingController.scheduleMeeting
+);
 
-// @route   GET /api/admin/meetings/:id
-// @desc    Get single meeting
-// @access  Private/Admin
-router.get('/admin/:id', protect, authorize('admin'), getMeeting);
+// Frontend: adminAPI.getMeeting(id) → GET /api/meetings/admin/:id
+router.get(
+  '/admin/:id',
+  protect,
+  authorize('admin'),
+  meetingController.getMeeting
+);
 
-// @route   PUT /api/admin/meetings/:id
-// @desc    Update meeting
-// @access  Private/Admin
-router.put('/admin/:id', protect, authorize('admin'), updateMeeting);
+// Frontend: adminAPI.updateMeeting(id) → PUT /api/meetings/admin/:id
+router.put(
+  '/admin/:id',
+  protect,
+  authorize('admin'),
+  meetingController.updateMeeting
+);
 
-// @route   DELETE /api/admin/meetings/:id
-// @desc    Delete meeting
-// @access  Private/Admin
-router.delete('/admin/:id', protect, authorize('admin'), deleteMeeting);
+// Frontend: adminAPI.deleteMeeting(id) → DELETE /api/meetings/admin/:id
+router.delete(
+  '/admin/:id',
+  protect,
+  authorize('admin'),
+  meetingController.deleteMeeting
+);
 
-// @route   POST /api/admin/meetings/:id/minutes
-// @desc    Add meeting minutes/notes
-// @access  Private/Admin
-router.post('/admin/:id/minutes', protect, authorize('admin'), addMeetingMinutes);
+// Frontend: adminAPI.addMeetingMinutes(id) → POST /api/meetings/admin/:id/minutes
+router.post(
+  '/admin/:id/minutes',
+  protect,
+  authorize('admin'),
+  meetingController.addMeetingMinutes
+);
 
 // ============================================
-// EMPLOYEE ROUTES - /api/employee/meetings
+// EMPLOYEE MEETING ROUTES
+// Frontend calls: /meetings/employee/*
 // ============================================
 
-// @route   GET /api/employee/meetings
-// @desc    Get my meetings
-// @access  Private/Employee
-router.get('/employee', protect, authorize('employee'), getMyMeetings);
+// Frontend: employeeAPI.getMyMeetings() → GET /api/meetings/employee
+router.get(
+  '/employee',
+  protect,
+  authorize('employee'),
+  meetingController.getMyMeetings
+);
 
-// @route   GET /api/employee/meetings/:id
-// @desc    Get single meeting
-// @access  Private/Employee
-router.get('/employee/:id', protect, authorize('employee'), getMeeting);
+// Frontend: employeeAPI.getMeeting(id) → GET /api/meetings/employee/:id
+router.get(
+  '/employee/:id',
+  protect,
+  authorize('employee'),
+  meetingController.getMeeting
+);
 
-// @route   PATCH /api/employee/meetings/:id/status
-// @desc    Update participant status (accept/decline)
-// @access  Private/Employee
-router.patch('/employee/:id/status', protect, authorize('employee'), updateParticipantStatus);
+// Frontend: employeeAPI.updateMeetingStatus(id) → PATCH /api/meetings/employee/:id/status
+router.patch(
+  '/employee/:id/status',
+  protect,
+  authorize('employee'),
+  meetingController.updateParticipantStatus
+);
 
 // ============================================
-// CLIENT ROUTES - /api/client/meetings
+// CLIENT MEETING ROUTES
+// Frontend calls: /meetings/client/*
 // ============================================
 
-// @route   GET /api/client/meetings
-// @desc    Get my meetings
-// @access  Private/Client
-router.get('/client', protect, authorize('client'), getMyMeetings);
+// Frontend: clientAPI.getMyMeetings() → GET /api/meetings/client
+router.get(
+  '/client',
+  protect,
+  authorize('client'),
+  meetingController.getMyMeetings
+);
 
-// @route   POST /api/client/meetings
-// @desc    Schedule meeting (client)
-// @access  Private/Client
-router.post('/client', protect, authorize('client'), clientScheduleMeeting);
+// Frontend: clientAPI.scheduleMeeting() → POST /api/meetings/client
+router.post(
+  '/client',
+  protect,
+  authorize('client'),
+  meetingController.clientScheduleMeeting
+);
 
-// @route   GET /api/client/meetings/:id
-// @desc    Get single meeting
-// @access  Private/Client
-router.get('/client/:id', protect, authorize('client'), getMeeting);
+// Frontend: clientAPI.getMeeting(id) → GET /api/meetings/client/:id
+router.get(
+  '/client/:id',
+  protect,
+  authorize('client'),
+  meetingController.getMeeting
+);
 
-// @route   DELETE /api/client/meetings/:id
-// @desc    Cancel meeting
-// @access  Private/Client
-router.delete('/client/:id', protect, authorize('client'), clientCancelMeeting);
+// Frontend: clientAPI.cancelMeeting(id) → DELETE /api/meetings/client/:id
+router.delete(
+  '/client/:id',
+  protect,
+  authorize('client'),
+  meetingController.clientCancelMeeting
+);
 
-// @route   PATCH /api/client/meetings/:id/status
-// @desc    Update participant status (accept/decline)
-// @access  Private/Client
-router.patch('/client/:id/status', protect, authorize('client'), updateParticipantStatus);
+// Frontend: clientAPI.updateMeetingStatus(id) → PATCH /api/meetings/client/:id/status
+router.patch(
+  '/client/:id/status',
+  protect,
+  authorize('client'),
+  meetingController.updateParticipantStatus
+);
 
 module.exports = router;
