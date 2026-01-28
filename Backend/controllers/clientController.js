@@ -489,7 +489,7 @@ exports.getMyProjects = async (req, res) => {
     const { status, search, sortBy = 'createdAt', order = 'desc' } = req.query;
 
     // Build query
-    const query = { client: clientId };
+    const query = { client: client._id };
 
     if (status) {
       query.status = status;
