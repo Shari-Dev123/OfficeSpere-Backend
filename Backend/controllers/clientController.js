@@ -382,10 +382,15 @@ exports.getDashboard = async (req, res) => {
     console.log('📋 Projects found:', projects.length);
 
     // Count projects by status
-    const activeProjects = projects.filter(p => p.status === 'in-progress' || p.status === 'in_progress').length;
-    const completedProjects = projects.filter(p => p.status === 'completed').length;
-    const pendingProjects = projects.filter(p => p.status === 'planning' || p.status === 'pending').length;
-
+    const activeProjects = projects.filter(p =>
+      ['In Progress', 'in-progress'].includes(p.status)
+    ).length;
+    const completedProjects = projects.filter(p =>
+      ['Completed', 'completed'].includes(p.status)
+    ).length;
+    const pendingProjects = projects.filter(p =>
+      ['Planning', 'Pending', 'planning'].includes(p.status)
+    ).length;
     // Get upcoming meetings - use client._id
     const upcomingMeetings = await Meeting.find({
       participants: client._id,
