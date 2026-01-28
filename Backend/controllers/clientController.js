@@ -28,6 +28,7 @@ exports.createProject = async (req, res) => {
       budget,
       requirements,
       priority,
+      status,
       category
     } = req.body;
 
