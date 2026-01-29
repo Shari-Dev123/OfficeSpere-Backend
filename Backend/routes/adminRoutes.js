@@ -1,13 +1,9 @@
 // routes/adminRoutes.js
-// ============================================
-// COMPLETE ADMIN ROUTES - ALL OPERATIONS
-// ============================================
-
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/auth');
 
-// Import Admin Controller
+// ✅ Import from adminController
 const {
   getDashboard,
   getEmployees,
@@ -20,20 +16,22 @@ const {
   addClient,
   updateClient,
   deleteClient,
+  getProjects,
   getSettings,
-  updateSettings
+  updateSettings,
+  getDailyAttendance  // ✅ MUST BE HERE
 } = require('../controllers/adminController');
 
-// Import Project Controller
+// ✅ Import from projectController
 const {
-  getProjects,
   getProject,
   createProject,
   updateProject,
-  deleteProject
+  deleteProject,
+  assignTeam
 } = require('../controllers/projectController');
 
-// Import Task Controller
+// ✅ Import from taskController
 const {
   getTasks,
   getTask,
@@ -50,17 +48,21 @@ router.use(authorize('admin'));
 
 // ============================================
 // DASHBOARD ROUTES
-// Frontend: adminAPI.getDashboardStats() → GET /api/admin/dashboard
 // ============================================
 router.get('/dashboard', getDashboard);
 
 // ============================================
+// ATTENDANCE ROUTES - PLACE EARLY
+// ============================================
+router.get('/attendance', (req, res, next) => {
+  console.log('🎯 ATTENDANCE ROUTE HIT!');
+  console.log('URL:', req.originalUrl);
+  console.log('Query:', req.query);
+  next();
+}, getDailyAttendance);
+
+// ============================================
 // EMPLOYEE ROUTES
-// Frontend: adminAPI.getEmployees() → GET /api/admin/employees
-// Frontend: adminAPI.addEmployee() → POST /api/admin/employees
-// Frontend: adminAPI.getEmployee(id) → GET /api/admin/employees/:id
-// Frontend: adminAPI.updateEmployee(id) → PUT /api/admin/employees/:id
-// Frontend: adminAPI.deleteEmployee(id) → DELETE /api/admin/employees/:id
 // ============================================
 router.route('/employees')
   .get(getEmployees)
@@ -73,11 +75,6 @@ router.route('/employees/:id')
 
 // ============================================
 // CLIENT ROUTES
-// Frontend: adminAPI.getClients() → GET /api/admin/clients
-// Frontend: adminAPI.addClient() → POST /api/admin/clients
-// Frontend: adminAPI.getClient(id) → GET /api/admin/clients/:id
-// Frontend: adminAPI.updateClient(id) → PUT /api/admin/clients/:id
-// Frontend: adminAPI.deleteClient(id) → DELETE /api/admin/clients/:id
 // ============================================
 router.route('/clients')
   .get(getClients)
@@ -89,12 +86,7 @@ router.route('/clients/:id')
   .delete(deleteClient);
 
 // ============================================
-// PROJECT ROUTES (ADDED - WAS MISSING!)
-// Frontend: adminAPI.getProjects() → GET /api/admin/projects
-// Frontend: adminAPI.addProject() → POST /api/admin/projects
-// Frontend: adminAPI.getProject(id) → GET /api/admin/projects/:id
-// Frontend: adminAPI.updateProject(id) → PUT /api/admin/projects/:id
-// Frontend: adminAPI.deleteProject(id) → DELETE /api/admin/projects/:id
+// PROJECT ROUTES
 // ============================================
 router.route('/projects')
   .get(getProjects)
@@ -105,13 +97,10 @@ router.route('/projects/:id')
   .put(updateProject)
   .delete(deleteProject);
 
+router.post('/projects/:id/assign', assignTeam);
+
 // ============================================
-// TASK ROUTES (ADDED - WAS MISSING!)
-// Frontend: adminAPI.getTasks() → GET /api/admin/tasks
-// Frontend: adminAPI.addTask() → POST /api/admin/tasks
-// Frontend: adminAPI.getTask(id) → GET /api/admin/tasks/:id
-// Frontend: adminAPI.updateTask(id) → PUT /api/admin/tasks/:id
-// Frontend: adminAPI.deleteTask(id) → DELETE /api/admin/tasks/:id
+// TASK ROUTES
 // ============================================
 router.route('/tasks')
   .get(getTasks)
@@ -124,8 +113,6 @@ router.route('/tasks/:id')
 
 // ============================================
 // SETTINGS ROUTES
-// Frontend: adminAPI.getSettings() → GET /api/admin/settings
-// Frontend: adminAPI.updateSettings() → PUT /api/admin/settings
 // ============================================
 router.route('/settings')
   .get(getSettings)

@@ -19,10 +19,7 @@ const DailyReport = require("../models/DailyReport");
 // @desc    Get admin dashboard statistics
 // @route   GET /api/admin/dashboard
 // @access  Private/Admin
-// @desc    Get admin dashboard statistics
-// @route   GET /api/admin/dashboard
-// @access  Private/Admin
-exports.getDashboard = async (req, res) => {
+const getDashboard = async (req, res) => {
   try {
     // Get total employees
     const totalEmployees = await Employee.countDocuments({ isActive: true });
@@ -168,13 +165,7 @@ function formatTimeAgo(date) {
 // @desc    Get all employees
 // @route   GET /api/admin/employees
 // @access  Private/Admin
-// @desc    Get all employees
-// @route   GET /api/admin/employees
-// @access  Private/Admin
-// @desc    Get all employees
-// @route   GET /api/admin/employees
-// @access  Private/Admin
-exports.getEmployees = async (req, res) => {
+const getEmployees = async (req, res) => {
   try {
     const { search, department, status, page = 1, limit = 10 } = req.query;
 
@@ -203,7 +194,7 @@ exports.getEmployees = async (req, res) => {
 
     // Fix: Populate 'userId' not 'user'
     const employees = await Employee.find(query)
-      .populate("userId", "name email phone avatar isActive createdAt") // Fixed: userId, not user
+      .populate("userId", "name email phone avatar isActive createdAt")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -217,16 +208,14 @@ exports.getEmployees = async (req, res) => {
         name: userData.name || "No Name",
         email: userData.email || employee.email || "No Email",
         phone: userData.phone || employee.phone || "",
-        position: employee.designation || "Employee", // Map designation to position
+        position: employee.designation || "Employee",
         department: employee.department || "General",
         employeeId: employee.employeeId || "N/A",
         status: employee.isActive ? "active" : "inactive",
         joinDate: employee.joiningDate || new Date(),
         salary: employee.salary || 0,
-        // Add fields that EmployeeList.jsx might need
         avatar: userData.avatar,
         address: employee.address || {},
-        // Include the original employee object if needed
         rawEmployee: employee,
       };
     });
@@ -237,7 +226,7 @@ exports.getEmployees = async (req, res) => {
       total,
       page: parseInt(page),
       pages: Math.ceil(total / limit),
-      employees: transformedEmployees, // Frontend expects 'employees' array
+      employees: transformedEmployees,
     });
   } catch (error) {
     console.error("Get employees error:", error);
@@ -252,19 +241,16 @@ exports.getEmployees = async (req, res) => {
 // @desc    Add new employee
 // @route   POST /api/admin/employees
 // @access  Private/Admin
-// @desc    Add new employee
-// @route   POST /api/admin/employees
-// @access  Private/Admin
-exports.addEmployee = async (req, res) => {
+const addEmployee = async (req, res) => {
   try {
-    console.log("📝 Add employee request body:", req.body); // DEBUG LOG
+    console.log("📝 Add employee request body:", req.body);
 
     const {
       name,
       email,
       password,
       phone,
-      position, // Frontend sends 'position'
+      position,
       department,
       salary,
       joinDate,
@@ -272,7 +258,6 @@ exports.addEmployee = async (req, res) => {
       address,
     } = req.body;
 
-    // DEBUG: Log what we're receiving
     console.log("📊 Received data:", {
       name,
       email,
@@ -291,7 +276,6 @@ exports.addEmployee = async (req, res) => {
       });
     }
 
-    // Validate position/designation
     if (!position) {
       return res.status(400).json({
         success: false,
@@ -299,7 +283,6 @@ exports.addEmployee = async (req, res) => {
       });
     }
 
-    // Validate department
     if (!department) {
       return res.status(400).json({
         success: false,
@@ -307,15 +290,13 @@ exports.addEmployee = async (req, res) => {
       });
     }
 
-    // Format department to match enum (capitalize first letter)
+    // Format department
     let formattedDepartment = department;
     if (formattedDepartment) {
-      // Capitalize first letter
       formattedDepartment =
         formattedDepartment.charAt(0).toUpperCase() +
         formattedDepartment.slice(1).toLowerCase();
 
-      // Special case for HR
       if (department.toLowerCase() === "hr") {
         formattedDepartment = "HR";
       }
@@ -332,7 +313,7 @@ exports.addEmployee = async (req, res) => {
       });
     }
 
-    // 1. Create User account FIRST
+    // Create User account
     console.log("👤 Creating user account...");
     const user = await User.create({
       name,
@@ -345,29 +326,28 @@ exports.addEmployee = async (req, res) => {
 
     console.log("✅ User created with ID:", user._id);
 
-    // 2. Generate employee ID
+    // Generate employee ID
     const employeeCount = await Employee.countDocuments();
     const employeeId = `EMP${String(employeeCount + 1).padStart(4, "0")}`;
     console.log("📇 Generated employee ID:", employeeId);
 
-    // 3. Map status to isActive
+    // Map status to isActive
     const isActive = status !== "inactive";
 
-    // 4. Create Employee profile WITH CORRECT FIELD NAMES
+    // Create Employee profile
     console.log("👷 Creating employee profile...");
     const employeeData = {
       userId: user._id,
       employeeId: employeeId,
-      name: name, // Add name directly to Employee
-      email: email, // Add email directly to Employee
-      phone: phone || "", // Add phone directly to Employee
+      name: name,
+      email: email,
+      phone: phone || "",
       position: position,
-      designation: position, // CRITICAL: Map 'position' to 'designation'
-      department: formattedDepartment, // Use formatted department
+      designation: position,
+      department: formattedDepartment,
       joiningDate: joinDate ? new Date(joinDate) : new Date(),
       salary: salary ? parseFloat(salary) : 0,
       isActive: isActive,
-      // Add other required fields with defaults
       skills: [],
       experience: 0,
       performance: {
@@ -384,7 +364,6 @@ exports.addEmployee = async (req, res) => {
       },
     };
 
-    // Add optional fields if provided
     if (address) {
       employeeData.address = { street: address };
     }
@@ -397,19 +376,19 @@ exports.addEmployee = async (req, res) => {
     const employee = await Employee.create(employeeData);
     console.log("✅ Employee created with ID:", employee._id);
 
-    // 5. Get populated employee for response
+    // Get populated employee
     const populatedEmployee = await Employee.findById(employee._id).populate(
       "userId",
       "name email phone",
     );
 
-    // 6. Transform response to match frontend expectations
+    // Transform response
     const responseData = {
       _id: populatedEmployee._id,
       name: populatedEmployee.userId?.name || name,
       email: populatedEmployee.userId?.email || email,
       phone: populatedEmployee.userId?.phone || phone,
-      position: populatedEmployee.designation, // Map back to position for frontend
+      position: populatedEmployee.designation,
       department: populatedEmployee.department,
       employeeId: populatedEmployee.employeeId,
       status: populatedEmployee.isActive ? "active" : "inactive",
@@ -432,7 +411,6 @@ exports.addEmployee = async (req, res) => {
       stack: error.stack,
     });
 
-    // Handle validation errors
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
@@ -443,7 +421,6 @@ exports.addEmployee = async (req, res) => {
       });
     }
 
-    // Handle duplicate key error
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -463,10 +440,7 @@ exports.addEmployee = async (req, res) => {
 // @desc    Get single employee
 // @route   GET /api/admin/employees/:id
 // @access  Private/Admin
-// @desc    Get single employee
-// @route   GET /api/admin/employees/:id
-// @access  Private/Admin
-exports.getEmployee = async (req, res) => {
+const getEmployee = async (req, res) => {
   try {
     const employee = await Employee.findById(req.params.id).populate(
       "userId",
@@ -492,12 +466,10 @@ exports.getEmployee = async (req, res) => {
       status: employee.isActive ? "active" : "inactive",
       joinDate: employee.joiningDate || new Date(),
       salary: employee.salary || 0,
-      // Include other fields
       avatar: employee.userId?.avatar,
       address: employee.address || {},
       skills: employee.skills || [],
       experience: employee.experience || 0,
-      // Include user info
       user: employee.userId
         ? {
             email: employee.userId.email,
@@ -537,10 +509,7 @@ exports.getEmployee = async (req, res) => {
 // @desc    Update employee
 // @route   PUT /api/admin/employees/:id
 // @access  Private/Admin
-// @desc    Update employee
-// @route   PUT /api/admin/employees/:id
-// @access  Private/Admin
-exports.updateEmployee = async (req, res) => {
+const updateEmployee = async (req, res) => {
   try {
     const employee = await Employee.findById(req.params.id).populate(
       "userId",
@@ -554,7 +523,7 @@ exports.updateEmployee = async (req, res) => {
       });
     }
 
-    // Update fields that are allowed
+    // Update fields
     const allowedFields = [
       "designation",
       "department",
@@ -573,19 +542,17 @@ exports.updateEmployee = async (req, res) => {
       }
     });
 
-    // Map 'position' to 'designation'
     if (req.body.position !== undefined) {
       employee.designation = req.body.position;
     }
 
-    // Map 'status' to 'isActive'
     if (req.body.status !== undefined) {
       employee.isActive = req.body.status === "active";
     }
 
     await employee.save();
 
-    // Also update User if name/email/phone provided
+    // Update User if needed
     if (employee.userId) {
       const userUpdate = {};
       if (req.body.name) userUpdate.name = req.body.name;
@@ -597,7 +564,7 @@ exports.updateEmployee = async (req, res) => {
       }
     }
 
-    // Get updated employee with populated user
+    // Get updated employee
     const updatedEmployee = await Employee.findById(employee._id).populate(
       "userId",
       "name email phone",
@@ -632,7 +599,7 @@ exports.updateEmployee = async (req, res) => {
 // @desc    Delete employee
 // @route   DELETE /api/admin/employees/:id
 // @access  Private/Admin
-exports.deleteEmployee = async (req, res) => {
+const deleteEmployee = async (req, res) => {
   try {
     const employee = await Employee.findById(req.params.id);
 
@@ -643,11 +610,11 @@ exports.deleteEmployee = async (req, res) => {
       });
     }
 
-    // Soft delete - just deactivate
+    // Soft delete
     employee.isActive = false;
     await employee.save();
 
-    // Also deactivate user account
+    // Deactivate user account
     await User.findByIdAndUpdate(employee.user, { isActive: false });
 
     res.status(200).json({
@@ -671,7 +638,7 @@ exports.deleteEmployee = async (req, res) => {
 // @desc    Get all clients
 // @route   GET /api/admin/clients
 // @access  Private/Admin
-exports.getClients = async (req, res) => {
+const getClients = async (req, res) => {
   try {
     const { search, status, page = 1, limit = 10 } = req.query;
 
@@ -721,7 +688,7 @@ exports.getClients = async (req, res) => {
 // @desc    Get single client
 // @route   GET /api/admin/clients/:id
 // @access  Private/Admin
-exports.getClient = async (req, res) => {
+const getClient = async (req, res) => {
   try {
     const client = await Client.findById(req.params.id).populate(
       "userId",
@@ -760,7 +727,7 @@ exports.getClient = async (req, res) => {
 // @desc    Add new client
 // @route   POST /api/admin/clients
 // @access  Private/Admin
-exports.addClient = async (req, res) => {
+const addClient = async (req, res) => {
   try {
     console.log('📝 Add client request body:', req.body);
 
@@ -770,13 +737,12 @@ exports.addClient = async (req, res) => {
       password,
       phone,
       address,
-      company: companyName,  // Frontend sends 'company' but model expects 'companyName'
+      company: companyName,
       industry,
       website,
       status
     } = req.body;
 
-    // DEBUG: Log what we're receiving
     console.log('📊 Received client data:', {
       name,
       email,
@@ -793,7 +759,7 @@ exports.addClient = async (req, res) => {
       });
     }
 
-    // Check if email already exists
+    // Check if email exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -802,13 +768,11 @@ exports.addClient = async (req, res) => {
       });
     }
 
-    // Format industry to match enum (capitalize first letter)
+    // Format industry
     let formattedIndustry = '';
     if (industry) {
-      // Capitalize first letter
       formattedIndustry = industry.charAt(0).toUpperCase() + industry.slice(1).toLowerCase();
       
-      // Validate against enum
       const validIndustries = [
         'Technology', 'Healthcare', 'Finance', 'Education', 
         'Retail', 'Manufacturing', 'Real Estate', 'Other'
@@ -825,7 +789,7 @@ exports.addClient = async (req, res) => {
 
     console.log('🔄 Formatted industry:', formattedIndustry);
 
-    // 1. Create User account
+    // Create User account
     console.log('👤 Creating user account...');
     const user = await User.create({
       name,
@@ -838,20 +802,20 @@ exports.addClient = async (req, res) => {
 
     console.log('✅ User created with ID:', user._id);
 
-    // 2. Generate client ID
+    // Generate client ID
     const clientCount = await Client.countDocuments();
     const clientId = `CL${String(clientCount + 1).padStart(4, '0')}`;
     console.log('📇 Generated client ID:', clientId);
 
-    // 3. Map status to isActive
+    // Map status
     const isActive = status !== 'inactive';
 
-    // 4. Create Client profile with CORRECT FIELD NAMES
+    // Create Client profile
     console.log('🏢 Creating client profile...');
     const clientData = {
       userId: user._id,
-      clientId: clientId,  // CRITICAL: Add clientId
-      companyName: companyName,  // Use correct field name
+      clientId: clientId,
+      companyName: companyName,
       companyEmail: email,
       contactPerson: {
         name: name,
@@ -871,17 +835,17 @@ exports.addClient = async (req, res) => {
     const client = await Client.create(clientData);
     console.log('✅ Client created with ID:', client._id);
 
-    // 5. Get populated client for response
+    // Get populated client
     const populatedClient = await Client.findById(client._id)
       .populate('userId', 'name email phone');
 
-    // 6. Transform response to match frontend expectations
+    // Transform response
     const responseData = {
       _id: populatedClient._id,
       name: populatedClient.userId?.name || name,
       email: populatedClient.userId?.email || email,
       phone: populatedClient.userId?.phone || phone,
-      company: populatedClient.companyName,  // Map back to 'company' for frontend
+      company: populatedClient.companyName,
       companyName: populatedClient.companyName,
       industry: populatedClient.industry,
       website: populatedClient.companyWebsite,
@@ -895,7 +859,7 @@ exports.addClient = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Client added successfully',
-      client: responseData  // Changed from 'data' to 'client' to match frontend expectation
+      client: responseData
     });
   } catch (error) {
     console.error('❌ Add client error details:', {
@@ -905,7 +869,6 @@ exports.addClient = async (req, res) => {
       stack: error.stack
     });
     
-    // Handle validation errors
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -916,7 +879,6 @@ exports.addClient = async (req, res) => {
       });
     }
     
-    // Handle duplicate key error
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -933,11 +895,10 @@ exports.addClient = async (req, res) => {
   }
 };
 
-
 // @desc    Update client
 // @route   PUT /api/admin/clients/:id
 // @access  Private/Admin
-exports.updateClient = async (req, res) => {
+const updateClient = async (req, res) => {
   try {
     const client = await Client.findById(req.params.id);
 
@@ -985,7 +946,7 @@ exports.updateClient = async (req, res) => {
 // @desc    Delete client
 // @route   DELETE /api/admin/clients/:id
 // @access  Private/Admin
-exports.deleteClient = async (req, res) => {
+const deleteClient = async (req, res) => {
   try {
     const client = await Client.findById(req.params.id);
 
@@ -996,11 +957,11 @@ exports.deleteClient = async (req, res) => {
       });
     }
 
-    // Soft delete - just deactivate
+    // Soft delete
     client.isActive = false;
     await client.save();
 
-    // Also deactivate user account
+    // Deactivate user account
     await User.findByIdAndUpdate(client.user, { isActive: false });
 
     res.status(200).json({
@@ -1024,10 +985,8 @@ exports.deleteClient = async (req, res) => {
 // @desc    Get company settings
 // @route   GET /api/admin/settings
 // @access  Private/Admin
-exports.getSettings = async (req, res) => {
+const getSettings = async (req, res) => {
   try {
-    // In a real app, you'd have a Settings model
-    // For now, returning mock data
     const settings = {
       company: {
         name: "OfficeSphere",
@@ -1041,13 +1000,13 @@ exports.getSettings = async (req, res) => {
           start: "09:00",
           end: "18:00",
         },
-        gracePeriod: 15, // minutes
+        gracePeriod: 15,
         autoCheckout: true,
         autoCheckoutTime: "19:00",
       },
       tasks: {
         autoAssign: false,
-        reminderBeforeDeadline: 24, // hours
+        reminderBeforeDeadline: 24,
       },
       notifications: {
         email: true,
@@ -1072,9 +1031,8 @@ exports.getSettings = async (req, res) => {
 // @desc    Update company settings
 // @route   PUT /api/admin/settings
 // @access  Private/Admin
-exports.updateSettings = async (req, res) => {
+const updateSettings = async (req, res) => {
   try {
-    // In a real app, you'd update the Settings model
     const updatedSettings = req.body;
 
     res.status(200).json({
@@ -1090,4 +1048,240 @@ exports.updateSettings = async (req, res) => {
       error: error.message,
     });
   }
+};
+
+// @desc    Get all projects
+// @route   GET /api/admin/projects
+// @access  Private/Admin
+const getProjects = async (req, res) => {
+  try {
+    console.log('====================================');
+    console.log('📊 ADMIN: Fetching projects...');
+    console.log('====================================');
+    
+    const { status, priority, page = 1, limit = 10 } = req.query;
+    
+    console.log('📥 Query params:', { status, priority, page, limit });
+    
+    // Build query
+    const query = { isActive: true };
+    
+    if (status && status !== 'all') {
+      query.status = new RegExp(`^${status}$`, 'i');
+      console.log('🔍 Filtering by status:', status);
+    }
+    
+    if (priority && priority !== 'all') {
+      query.priority = new RegExp(`^${priority}$`, 'i');
+      console.log('🔍 Filtering by priority:', priority);
+    }
+    
+    console.log('🔍 Final query:', JSON.stringify(query, null, 2));
+    
+    // Pagination
+    const skip = (page - 1) * limit;
+    const total = await Project.countDocuments(query);
+    
+    console.log('📊 Total projects matching query:', total);
+    
+    // Fetch projects
+    const projects = await Project.find(query)
+      .populate('client', 'companyName clientId email contactPerson phone')
+      .populate('projectManager', 'name email designation')
+      .populate('team', 'name email designation')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+    
+    console.log('✅ Found projects:', projects.length);
+    
+    if (projects.length > 0) {
+      console.log('📋 Projects list:');
+      projects.forEach((p, i) => {
+        console.log(`   ${i + 1}. "${p.name}" - ${p.status} - Client: ${p.client?.companyName || 'N/A'}`);
+      });
+    } else {
+      console.log('⚠️ No projects found matching criteria');
+    }
+    
+    console.log('====================================');
+    
+    res.status(200).json({
+      success: true,
+      total,
+      count: projects.length,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+      projects: projects,
+      message: projects.length === 0 ? 'No projects found' : 'Projects fetched successfully'
+    });
+    
+  } catch (error) {
+    console.error('====================================');
+    console.error('❌ ADMIN GET PROJECTS ERROR');
+    console.error('====================================');
+    console.error('Error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('====================================');
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching projects',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get daily attendance for admin
+// @route   GET /api/admin/attendance
+// @access  Private/Admin
+const getDailyAttendance = async (req, res) => {
+  try {
+    console.log('====================================');
+    console.log('📊 ADMIN: Fetching daily attendance');
+    console.log('====================================');
+    console.log('📥 Query params:', req.query);
+    
+    const { date } = req.query;
+    
+    // Parse the date or use today
+    let queryDate;
+    if (date) {
+      queryDate = new Date(date);
+    } else {
+      queryDate = new Date();
+    }
+    
+    // Set to start of day
+    queryDate.setHours(0, 0, 0, 0);
+    const nextDay = new Date(queryDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    
+    console.log('📅 Query date range:', {
+      from: queryDate,
+      to: nextDay
+    });
+    
+    // Get all employees
+    const allEmployees = await Employee.find({ isActive: true })
+      .populate('userId', 'name email')
+      .select('name email employeeId designation');
+    
+    console.log('👥 Total active employees:', allEmployees.length);
+    
+    // Get attendance records for the date
+    const attendanceRecords = await Attendance.find({
+      date: { $gte: queryDate, $lt: nextDay }
+    }).populate({
+      path: 'employeeId',
+      populate: {
+        path: 'userId',
+        select: 'name email'
+      }
+    });
+    
+    console.log('📋 Attendance records found:', attendanceRecords.length);
+    
+    // Create attendance data for all employees
+    const attendanceData = allEmployees.map(employee => {
+      const record = attendanceRecords.find(
+        r => r.employeeId?._id?.toString() === employee._id.toString()
+      );
+      
+      if (record) {
+        const checkIn = record.checkInTime;
+        const checkOut = record.checkOutTime;
+        let workHours = 0;
+        
+        if (checkIn && checkOut) {
+          const diff = new Date(checkOut) - new Date(checkIn);
+          workHours = (diff / (1000 * 60 * 60)).toFixed(1);
+        }
+        
+        return {
+          employeeName: employee.userId?.name || employee.name || 'Unknown',
+          email: employee.userId?.email || employee.email || '-',
+          employeeId: employee.employeeId,
+          designation: employee.designation,
+          checkIn: record.checkInTime,
+          checkOut: record.checkOutTime,
+          workHours: workHours,
+          status: record.status,
+          isLate: record.isLate || false
+        };
+      } else {
+        return {
+          employeeName: employee.userId?.name || employee.name || 'Unknown',
+          email: employee.userId?.email || employee.email || '-',
+          employeeId: employee.employeeId,
+          designation: employee.designation,
+          checkIn: null,
+          checkOut: null,
+          workHours: 0,
+          status: 'absent',
+          isLate: false
+        };
+      }
+    });
+    
+    // Calculate stats
+    const stats = {
+      total: attendanceData.length,
+      present: attendanceData.filter(a => a.status === 'present').length,
+      late: attendanceData.filter(a => a.status === 'late').length,
+      absent: attendanceData.filter(a => a.status === 'absent').length
+    };
+    
+    console.log('📊 Attendance stats:', stats);
+    console.log('====================================');
+    
+    res.status(200).json({
+      success: true,
+      date: queryDate,
+      stats,
+      attendance: attendanceData.sort((a, b) => {
+        if (a.status === 'absent' && b.status !== 'absent') return 1;
+        if (a.status !== 'absent' && b.status === 'absent') return -1;
+        if (!a.checkIn) return 1;
+        if (!b.checkIn) return -1;
+        return new Date(a.checkIn) - new Date(b.checkIn);
+      })
+    });
+    
+  } catch (error) {
+    console.error('====================================');
+    console.error('❌ GET DAILY ATTENDANCE ERROR');
+    console.error('====================================');
+    console.error('Error:', error);
+    console.error('====================================');
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching attendance data',
+      error: error.message
+    });
+  }
+};
+
+// ============================================
+// EXPORTS - MUST BE AT THE VERY END
+// ============================================
+module.exports = {
+  getDashboard,
+  getEmployees,
+  getEmployee,
+  addEmployee,
+  updateEmployee,
+  deleteEmployee,
+  getClients,
+  getClient,
+  addClient,
+  updateClient,
+  deleteClient,
+  getProjects,
+  getSettings,
+  updateSettings,
+  getDailyAttendance
 };

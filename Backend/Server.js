@@ -1,5 +1,5 @@
 // server.js
-// Main server file - OfficeSphere Backend (CORRECTED VERSION)
+// Main server file - OfficeSphere Backend (FIXED VERSION)
 
 const express = require('express');
 const cors = require('cors');
@@ -53,10 +53,11 @@ const authRoutes = require('./Routes/authRoutes');
 const clientRoutes = require('./Routes/clientRoutes');
 const employeeRoutes = require('./Routes/employeeRoutes');
 const meetingRoutes = require('./Routes/meetingRoutes');
-const projectRoutes = require('./Routes/attendanceRoutes');
 const reportRoutes = require('./Routes/reportRoutes');
 const taskRoutes = require('./Routes/taskRoutes');
 
+// ✅ REMOVED: projectRoutes - Projects handled by admin/client routes
+// ❌ OLD: const projectRoutes = require('./Routes/attendanceRoutes'); // THIS WAS WRONG!
 
 // Check if uploadRoutes exists, if not skip it
 let uploadRoutes;
@@ -85,8 +86,6 @@ app.get('/', (req, res) => {
       admin: '/api/admin',
       employee: '/api/employee',
       client: '/api/client',
-      projects: '/api/projects',
-      tasks: '/api/tasks',
       attendance: '/api/attendance',
       meetings: '/api/meetings',
       reports: '/api/reports',
@@ -96,19 +95,20 @@ app.get('/', (req, res) => {
   });
 });
 
-// Mount routes
-app.use('/api/admin', adminRoutes);
-app.use('/api/attendance', attendanceRoutes);
+// ==========================================
+// MOUNT ROUTES
+// ==========================================
 app.use('/api/auth', authRoutes);
-app.use('/api/client', clientRoutes);
+app.use('/api/admin', adminRoutes);        // ✅ Admin routes (includes /admin/projects)
 app.use('/api/employee', employeeRoutes);
+app.use('/api/client', clientRoutes);      // ✅ Client routes (includes /client/projects)
+app.use('/api/attendance', attendanceRoutes);
 app.use('/api/meetings', meetingRoutes);
-app.use('/api/projects', projectRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/tasks', taskRoutes);
-app.use('/api/upload', uploadRoutes);
 
-
+// ✅ REMOVED: app.use('/api/projects', projectRoutes); 
+// Projects are now handled within admin and client routes
 
 // Only mount upload routes if file exists
 if (uploadRoutes) {
@@ -121,9 +121,20 @@ if (uploadRoutes) {
 
 // 404 handler - Route not found
 app.use((req, res) => {
+  console.log('❌ 404 - Route not found:', req.method, req.originalUrl);
   res.status(404).json({
     success: false,
-    message: `Route ${req.originalUrl} not found`
+    message: `Route ${req.originalUrl} not found`,
+    availableRoutes: [
+      '/api/auth/*',
+      '/api/admin/*',
+      '/api/employee/*',
+      '/api/client/*',
+      '/api/attendance/*',
+      '/api/meetings/*',
+      '/api/reports/*',
+      '/api/tasks/*'
+    ]
   });
 });
 
@@ -137,14 +148,14 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 const server = app.listen(PORT, () => {
-  console.log('='.repeat(50));
+  console.log('==================================================');
   console.log(`🚀 OfficeSphere Backend Server`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🌐 Server running on port ${PORT}`);
   console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
   console.log(`📁 Static files: http://localhost:${PORT}/uploads`);
   console.log(`📊 MongoDB: Connected`);
-  console.log('='.repeat(50));
+  console.log('==================================================');
 });
 
 // Handle unhandled promise rejections

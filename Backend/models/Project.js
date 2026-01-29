@@ -50,7 +50,7 @@ const projectSchema = new mongoose.Schema(
     },
     priority: {
       type: String,
-      enum: ['Low', 'Medium', 'High', 'Urgent'],
+      enum: ['Low', 'Medium', 'High', 'Urgent', 'Critical'],
       default: 'Medium',
     },
     startDate: {
@@ -80,6 +80,12 @@ const projectSchema = new mongoose.Schema(
       max: 100,
       default: 0,
     },
+    assignedTeam: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
     milestones: [
       {
         name: String,

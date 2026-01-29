@@ -28,6 +28,7 @@ exports.createProject = async (req, res) => {
       budget,
       requirements,
       priority,
+      status,
       category
     } = req.body;
 
@@ -60,6 +61,9 @@ exports.createProject = async (req, res) => {
     const projectCount = await Project.countDocuments();
     const projectId = `PRJ${String(projectCount + 1).padStart(4, '0')}`;
 
+    const normalizedPriority =
+      priority === 'Critical' ? 'Urgent' : priority || 'Medium';
+
     // For now, we'll create project without projectManager
     // Admin can assign project manager later
     const projectData = {
@@ -69,11 +73,11 @@ exports.createProject = async (req, res) => {
       client: client._id,
       // We'll set a default/placeholder project manager or make it optional
       projectManager: null, // Admin will assign later
-      status: 'Planning',
+      status: status || 'Planning',
       priority: priority || 'Medium',
       startDate: startDate,
       endDate: deadline,
-      budget: budget || 0,
+      budget: Number(budget) || 0,
       spent: 0,
       progress: 0,
       tags: category ? [category] : [],
@@ -321,7 +325,7 @@ exports.sendProjectToAdmin = async (req, res) => {
 
     // Add to project (you may need to add this field to schema)
     // For now, we'll just log it and send success response
-    
+
     console.log('Admin Request:', adminRequest);
     console.log('✅ Request prepared for admin');
 
@@ -378,10 +382,15 @@ exports.getDashboard = async (req, res) => {
     console.log('📋 Projects found:', projects.length);
 
     // Count projects by status
-    const activeProjects = projects.filter(p => p.status === 'in-progress' || p.status === 'in_progress').length;
-    const completedProjects = projects.filter(p => p.status === 'completed').length;
-    const pendingProjects = projects.filter(p => p.status === 'planning' || p.status === 'pending').length;
-
+    const activeProjects = projects.filter(p =>
+      ['In Progress', 'in-progress'].includes(p.status)
+    ).length;
+    const completedProjects = projects.filter(p =>
+      ['Completed', 'completed'].includes(p.status)
+    ).length;
+    const pendingProjects = projects.filter(p =>
+      ['Planning', 'Pending', 'planning'].includes(p.status)
+    ).length;
     // Get upcoming meetings - use client._id
     const upcomingMeetings = await Meeting.find({
       participants: client._id,
@@ -398,8 +407,8 @@ exports.getDashboard = async (req, res) => {
 
     // Calculate total investment and average progress
     const totalInvestment = projects.reduce((sum, p) => sum + (p.budget || 0), 0);
-    const averageProgress = projects.length > 0 
-      ? projects.reduce((sum, p) => sum + (p.progress || 0), 0) / projects.length 
+    const averageProgress = projects.length > 0
+      ? projects.reduce((sum, p) => sum + (p.progress || 0), 0) / projects.length
       : 0;
 
     // Get recent feedback - use client._id
@@ -472,12 +481,21 @@ exports.getDashboard = async (req, res) => {
 // @access  Private (Client only)
 exports.getMyProjects = async (req, res) => {
   try {
-    const clientId = req.user.id;
+    const userId = req.user.id;
+    const client = await Client.findOne({ userId });
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client profile not found'
+      });
+    }
+
     const { status, search, sortBy = 'createdAt', order = 'desc' } = req.query;
 
     // Build query
-    const query = { client: clientId };
-    
+    const query = { client: client._id };
+
     if (status) {
       query.status = status;
     }
@@ -768,9 +786,9 @@ exports.getMeeting = async (req, res) => {
     const { id } = req.params;
     const clientId = req.user.id;
 
-    const meeting = await Meeting.findOne({ 
-      _id: id, 
-      participants: clientId 
+    const meeting = await Meeting.findOne({
+      _id: id,
+      participants: clientId
     })
       .populate('organizer', 'name email')
       .populate('participants', 'name email role avatar')
@@ -1371,21 +1389,21 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { 
-      name, 
-      email, 
-      phone, 
-      avatar, 
-      companyName, 
-      industry, 
-      website, 
-      companySize, 
-      address, 
-      city, 
-      state, 
-      zipCode, 
-      country, 
-      taxId 
+    const {
+      name,
+      email,
+      phone,
+      avatar,
+      companyName,
+      industry,
+      website,
+      companySize,
+      address,
+      city,
+      state,
+      zipCode,
+      country,
+      taxId
     } = req.body;
 
     // Find client by userId
@@ -1401,7 +1419,7 @@ exports.updateProfile = async (req, res) => {
     // Update User model fields
     const User = require('../models/User');
     const user = await User.findById(userId);
-    
+
     if (user) {
       if (name) user.name = name;
       if (email) user.email = email;
@@ -1415,12 +1433,12 @@ exports.updateProfile = async (req, res) => {
     if (industry !== undefined) client.industry = industry;
     if (website !== undefined) client.companyWebsite = website;
     if (companySize !== undefined) client.companySize = companySize;
-    
+
     // Update address - initialize if doesn't exist
     if (!client.address) {
       client.address = {};
     }
-    
+
     if (address !== undefined) client.address.street = address;
     if (city !== undefined) client.address.city = city;
     if (state !== undefined) client.address.state = state;
@@ -1431,14 +1449,14 @@ exports.updateProfile = async (req, res) => {
     if (!client.taxInfo) {
       client.taxInfo = {};
     }
-    
+
     if (taxId !== undefined) client.taxInfo.taxId = taxId;
 
     // Update contact person - initialize if doesn't exist
     if (!client.contactPerson) {
       client.contactPerson = {};
     }
-    
+
     if (name !== undefined) client.contactPerson.name = name;
     if (email !== undefined) client.contactPerson.email = email;
     if (phone !== undefined) client.contactPerson.phone = phone;
@@ -1587,6 +1605,83 @@ exports.changePassword = async (req, res) => {
     });
   }
 };
+
+// GET /api/client/projects
+// FIXED: Client Controller - getMyProjects Function
+// Replace your getMyProjects function with this
+
+exports.getMyProjects = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log('📊 Fetching projects for user:', userId);
+    
+    // Find the client document using userId
+    const client = await Client.findOne({ userId: userId });
+    
+    if (!client) {
+      console.log('❌ Client not found for userId:', userId);
+      return res.status(404).json({
+        success: false,
+        message: 'Client profile not found'
+      });
+    }
+    
+    console.log('✅ Client found:', client.clientId, client._id);
+    
+    const { status, search, sortBy = 'createdAt', order = 'desc' } = req.query;
+    
+    // Build query using client._id (ObjectId)
+    const query = { 
+      client: client._id,  // ✅ Use client._id, not userId
+      isActive: true 
+    };
+    
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    console.log('🔍 Project query:', query);
+    
+    // Sort options
+    const sortOptions = {};
+    sortOptions[sortBy] = order === 'asc' ? 1 : -1;
+    
+    const projects = await Project.find(query)
+      .populate('projectManager', 'name email designation')
+      .populate('assignedTeam', 'name email role')
+      .sort(sortOptions)
+      .lean();
+    
+    console.log(`✅ Found ${projects.length} projects for client`);
+    console.log('Project details:', projects.map(p => ({
+      id: p._id,
+      name: p.name,
+      status: p.status,
+      priority: p.priority
+    })));
+    
+    res.status(200).json({
+      success: true,
+      count: projects.length,
+      data: projects
+    });
+  } catch (error) {
+    console.error('❌ Get client projects error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch projects',
+      error: error.message
+    });
+  }
+};
+
 
 
 module.exports = exports;

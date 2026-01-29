@@ -36,8 +36,16 @@ exports.getProjects = async (req, res) => {
 
     const projects = await Project.find(query)
       .populate('client', 'name companyName email')
-      .populate('team', 'name email department designation')
-      .populate('createdBy', 'name email')
+      .populate({
+        path: 'team',
+        select: 'name email department designation',
+        match: { isActive: true } // only active employees
+      })
+      .populate({
+        path: 'client',
+        select: 'name companyName email',
+        match: { isActive: true } // only active clients
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -183,11 +191,21 @@ exports.createProject = async (req, res) => {
 // @desc    Update project
 // @route   PUT /api/admin/projects/:id
 // @access  Private/Admin
+// @desc    Update project
+// @route   PUT /api/admin/projects/:id
+// @access  Private/Admin
 exports.updateProject = async (req, res) => {
   try {
+    console.log('====================================');
+    console.log('🔄 UPDATE PROJECT');
+    console.log('====================================');
+    console.log('📝 Project ID:', req.params.id);
+    console.log('📊 Update data:', req.body);
+    
     let project = await Project.findById(req.params.id);
 
     if (!project) {
+      console.log('❌ Project not found');
       return res.status(404).json({
         success: false,
         message: 'Project not found'
@@ -222,19 +240,27 @@ exports.updateProject = async (req, res) => {
     }
 
     await project.save();
+    console.log('✅ Project saved');
 
-    // Populate project data
-    await project.populate('client', 'name companyName email');
-    await project.populate('team', 'name email department');
-    await project.populate('createdBy', 'name email');
+    // ✅ CRITICAL FIX: Only populate fields that exist in schema
+    const updatedProject = await Project.findById(project._id)
+      .populate('client', 'companyName email contactPerson')
+      .populate('team', 'name email designation');
+    
+    console.log('✅ Project populated');
+    console.log('====================================');
 
     res.status(200).json({
       success: true,
       message: 'Project updated successfully',
-      data: project
+      data: updatedProject
     });
   } catch (error) {
-    console.error('Update project error:', error);
+    console.error('====================================');
+    console.error('❌ Update project error:', error);
+    console.error('Error message:', error.message);
+    console.error('====================================');
+    
     res.status(500).json({
       success: false,
       message: 'Error updating project',
@@ -242,7 +268,6 @@ exports.updateProject = async (req, res) => {
     });
   }
 };
-
 // @desc    Delete project
 // @route   DELETE /api/admin/projects/:id
 // @access  Private/Admin
@@ -407,7 +432,7 @@ exports.getProjectStats = async (req, res) => {
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const inProgressTasks = tasks.filter(t => t.status === 'in-progress').length;
     const pendingTasks = tasks.filter(t => t.status === 'pending').length;
-    const overdueTasks = tasks.filter(t => 
+    const overdueTasks = tasks.filter(t =>
       t.status !== 'completed' && new Date(t.dueDate) < new Date()
     ).length;
 
