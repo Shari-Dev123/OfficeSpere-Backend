@@ -1091,3 +1091,96 @@ exports.updateSettings = async (req, res) => {
     });
   }
 };
+
+// GET /api/admin/projects
+// FIXED: Admin Controller - Projects Function
+// Replace your getProjects function with this
+// ============================================
+// FIXED: Admin Controller - getProjects Function
+// Replace your existing getProjects function with this
+// ============================================
+
+exports.getProjects = async (req, res) => {
+  try {
+    console.log('====================================');
+    console.log('📊 ADMIN: Fetching projects...');
+    console.log('====================================');
+    
+    const { status, priority, page = 1, limit = 10 } = req.query;
+    
+    console.log('📥 Query params:', { status, priority, page, limit });
+    
+    // Build query
+    const query = { isActive: true };
+    
+    // Filter by status if provided
+    if (status && status !== 'all') {
+      // Match exact status (case insensitive)
+      query.status = new RegExp(`^${status}$`, 'i');
+      console.log('🔍 Filtering by status:', status);
+    }
+    
+    // Filter by priority if provided
+    if (priority && priority !== 'all') {
+      query.priority = new RegExp(`^${priority}$`, 'i');
+      console.log('🔍 Filtering by priority:', priority);
+    }
+    
+    console.log('🔍 Final query:', JSON.stringify(query, null, 2));
+    
+    // Pagination
+    const skip = (page - 1) * limit;
+    const total = await Project.countDocuments(query);
+    
+    console.log('📊 Total projects matching query:', total);
+    
+    // Fetch projects
+    const projects = await Project.find(query)
+      .populate('client', 'companyName clientId email contactPerson phone')
+      .populate('projectManager', 'name email designation')
+      .populate('team', 'name email designation')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean(); // Use lean() for better performance
+    
+    console.log('✅ Found projects:', projects.length);
+    
+    if (projects.length > 0) {
+      console.log('📋 Projects list:');
+      projects.forEach((p, i) => {
+        console.log(`   ${i + 1}. "${p.name}" - ${p.status} - Client: ${p.client?.companyName || 'N/A'}`);
+      });
+    } else {
+      console.log('⚠️ No projects found matching criteria');
+    }
+    
+    console.log('====================================');
+    
+    // Return response
+    res.status(200).json({
+      success: true,
+      total,
+      count: projects.length,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+      projects: projects, // ✅ Frontend expects 'projects' key
+      message: projects.length === 0 ? 'No projects found' : 'Projects fetched successfully'
+    });
+    
+  } catch (error) {
+    console.error('====================================');
+    console.error('❌ ADMIN GET PROJECTS ERROR');
+    console.error('====================================');
+    console.error('Error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('====================================');
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching projects',
+      error: error.message
+    });
+  }
+};

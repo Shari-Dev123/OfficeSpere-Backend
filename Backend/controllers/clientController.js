@@ -1606,5 +1606,82 @@ exports.changePassword = async (req, res) => {
   }
 };
 
+// GET /api/client/projects
+// FIXED: Client Controller - getMyProjects Function
+// Replace your getMyProjects function with this
+
+exports.getMyProjects = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log('📊 Fetching projects for user:', userId);
+    
+    // Find the client document using userId
+    const client = await Client.findOne({ userId: userId });
+    
+    if (!client) {
+      console.log('❌ Client not found for userId:', userId);
+      return res.status(404).json({
+        success: false,
+        message: 'Client profile not found'
+      });
+    }
+    
+    console.log('✅ Client found:', client.clientId, client._id);
+    
+    const { status, search, sortBy = 'createdAt', order = 'desc' } = req.query;
+    
+    // Build query using client._id (ObjectId)
+    const query = { 
+      client: client._id,  // ✅ Use client._id, not userId
+      isActive: true 
+    };
+    
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    console.log('🔍 Project query:', query);
+    
+    // Sort options
+    const sortOptions = {};
+    sortOptions[sortBy] = order === 'asc' ? 1 : -1;
+    
+    const projects = await Project.find(query)
+      .populate('projectManager', 'name email designation')
+      .populate('assignedTeam', 'name email role')
+      .sort(sortOptions)
+      .lean();
+    
+    console.log(`✅ Found ${projects.length} projects for client`);
+    console.log('Project details:', projects.map(p => ({
+      id: p._id,
+      name: p.name,
+      status: p.status,
+      priority: p.priority
+    })));
+    
+    res.status(200).json({
+      success: true,
+      count: projects.length,
+      data: projects
+    });
+  } catch (error) {
+    console.error('❌ Get client projects error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch projects',
+      error: error.message
+    });
+  }
+};
+
+
 
 module.exports = exports;
