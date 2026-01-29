@@ -36,8 +36,16 @@ exports.getProjects = async (req, res) => {
 
     const projects = await Project.find(query)
       .populate('client', 'name companyName email')
-      .populate('team', 'name email department designation')
-      .populate('createdBy', 'name email')
+      .populate({
+        path: 'team',
+        select: 'name email department designation',
+        match: { isActive: true } // only active employees
+      })
+      .populate({
+        path: 'client',
+        select: 'name companyName email',
+        match: { isActive: true } // only active clients
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -407,7 +415,7 @@ exports.getProjectStats = async (req, res) => {
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
     const inProgressTasks = tasks.filter(t => t.status === 'in-progress').length;
     const pendingTasks = tasks.filter(t => t.status === 'pending').length;
-    const overdueTasks = tasks.filter(t => 
+    const overdueTasks = tasks.filter(t =>
       t.status !== 'completed' && new Date(t.dueDate) < new Date()
     ).length;
 
