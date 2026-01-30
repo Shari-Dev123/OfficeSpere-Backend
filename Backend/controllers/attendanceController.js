@@ -4,12 +4,147 @@
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
+const { getIO } = require('../config/socket');
 
 // ==================== EMPLOYEE ATTENDANCE ====================
 
 // @desc    Check in (Clock in)
 // @route   POST /api/employee/attendance/checkin
 // @access  Private (Employee)
+exports.markAttendance = async (req, res) => {
+  try {
+    const { employeeId, date, checkInTime, checkInLocation, status } = req.body;
+
+    // Check if attendance already exists for today
+    const existingAttendance = await Attendance.findOne({
+      employeeId,
+      date: new Date(date).setHours(0, 0, 0, 0)
+    });
+
+    if (existingAttendance && existingAttendance.checkInTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Attendance already marked for today'
+      });
+    }
+
+    // Get employee details
+    const employee = await Employee.findById(employeeId).populate('userId', 'name email');
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    // Create or update attendance
+    const attendance = await Attendance.findOneAndUpdate(
+      { employeeId, date: new Date(date).setHours(0, 0, 0, 0) },
+      {
+        checkInTime: checkInTime || new Date(),
+        checkInLocation: checkInLocation || 'Office',
+        status: status || 'present',
+        checkInIpAddress: req.ip,
+        checkInDeviceInfo: req.headers['user-agent']
+      },
+      { new: true, upsert: true }
+    ).populate('employeeId', 'name email department');
+
+    // ✅ EMIT SOCKET EVENT TO ALL ADMINS
+    try {
+      const io = getIO();
+      io.to('admin').emit('attendance-marked', {
+        employeeId: employeeId,
+        employeeName: employee.userId?.name || employee.name || 'Unknown',
+        checkIn: attendance.checkInTime,
+        status: attendance.status,
+        date: attendance.date,
+        location: attendance.checkInLocation
+      });
+      console.log('📡 Attendance event emitted to admins');
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Attendance marked successfully',
+      data: attendance
+    });
+  } catch (error) {
+    console.error('Error marking attendance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// REPLACE YOUR checkOut FUNCTION WITH THIS:
+exports.checkOut = async (req, res) => {
+  try {
+    const { employeeId, checkOutTime } = req.body;
+    const today = new Date().setHours(0, 0, 0, 0);
+
+    const attendance = await Attendance.findOne({
+      employeeId,
+      date: today
+    });
+
+    if (!attendance) {
+      return res.status(404).json({
+        success: false,
+        message: 'No check-in record found for today'
+      });
+    }
+
+    if (attendance.checkOutTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Already checked out'
+      });
+    }
+
+    // Update checkout
+    attendance.checkOutTime = checkOutTime || new Date();
+    attendance.checkOutIpAddress = req.ip;
+    attendance.checkOutDeviceInfo = req.headers['user-agent'];
+    await attendance.save();
+
+    // Get employee details
+    const employee = await Employee.findById(employeeId).populate('userId', 'name');
+
+    // ✅ EMIT SOCKET EVENT
+    try {
+      const io = getIO();
+      io.to('admin').emit('attendance-updated', {
+        employeeId: employeeId,
+        employeeName: employee.userId?.name || employee.name,
+        checkOut: attendance.checkOutTime,
+        workHours: attendance.workHours,
+        date: attendance.date
+      });
+      console.log('📡 Check-out event emitted to admins');
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Check-out successful',
+      data: attendance
+    });
+  } catch (error) {
+    console.error('Error checking out:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+}
+
 exports.checkIn = async (req, res) => {
   try {
     const employeeId = req.user.id;

@@ -1,12 +1,13 @@
 // server.js
-// Main server file - OfficeSphere Backend (FIXED VERSION)
-
+// Main server file - OfficeSphere Backend (WITH SOCKET.IO)
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorHandler');
 const path = require('path');
+const { initializeSocket } = require('./config/socket');
 
 // Load environment variables
 dotenv.config();
@@ -16,6 +17,15 @@ connectDB();
 
 // Initialize Express app
 const app = express();
+
+// CREATE HTTP SERVER
+const server = http.createServer(app);
+
+// INITIALIZE SOCKET.IO
+const io = initializeSocket(server);
+
+// MAKE IO ACCESSIBLE IN ROUTES
+app.set('io', io);
 
 // ==========================================
 // MIDDLEWARE
@@ -27,7 +37,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true
 }));
 
@@ -56,13 +66,10 @@ const meetingRoutes = require('./Routes/meetingRoutes');
 const reportRoutes = require('./Routes/reportRoutes');
 const taskRoutes = require('./Routes/taskRoutes');
 
-// ✅ REMOVED: projectRoutes - Projects handled by admin/client routes
-// ❌ OLD: const projectRoutes = require('./Routes/attendanceRoutes'); // THIS WAS WRONG!
-
-// Check if uploadRoutes exists, if not skip it
+// Check if uploadRoutes exists
 let uploadRoutes;
 try {
-  uploadRoutes = require('./routes/uploadRoutes');
+  uploadRoutes = require('./Routes/uploadRoutes');
 } catch (err) {
   console.log('⚠️  uploadRoutes not found, skipping...');
 }
@@ -72,6 +79,7 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'OfficeSphere API is running',
+    socket: io ? 'Connected' : 'Not Connected',
     timestamp: new Date().toISOString()
   });
 });
@@ -81,6 +89,7 @@ app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to OfficeSphere API',
     version: '1.0.0',
+    socket: 'Real-time updates enabled',
     endpoints: {
       auth: '/api/auth',
       admin: '/api/admin',
@@ -89,6 +98,7 @@ app.get('/', (req, res) => {
       attendance: '/api/attendance',
       meetings: '/api/meetings',
       reports: '/api/reports',
+      tasks: '/api/tasks',
       upload: '/api/upload',
       health: '/api/health'
     }
@@ -99,16 +109,13 @@ app.get('/', (req, res) => {
 // MOUNT ROUTES
 // ==========================================
 app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);        // ✅ Admin routes (includes /admin/projects)
+app.use('/api/admin', adminRoutes);
 app.use('/api/employee', employeeRoutes);
-app.use('/api/client', clientRoutes);      // ✅ Client routes (includes /client/projects)
+app.use('/api/client', clientRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/tasks', taskRoutes);
-
-// ✅ REMOVED: app.use('/api/projects', projectRoutes); 
-// Projects are now handled within admin and client routes
 
 // Only mount upload routes if file exists
 if (uploadRoutes) {
@@ -147,7 +154,7 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log('==================================================');
   console.log(`🚀 OfficeSphere Backend Server`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -155,13 +162,13 @@ const server = app.listen(PORT, () => {
   console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
   console.log(`📁 Static files: http://localhost:${PORT}/uploads`);
   console.log(`📊 MongoDB: Connected`);
+  console.log(`🔌 Socket.IO: Initialized & Ready`);
   console.log('==================================================');
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err, promise) => {
   console.log(`❌ Unhandled Rejection: ${err.message}`);
-  // Close server & exit process
   server.close(() => process.exit(1));
 });
 

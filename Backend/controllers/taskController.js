@@ -6,6 +6,7 @@
 const Task = require('../models/Task');
 const Project = require('../models/Project');
 const Employee = require('../models/Employee');
+const { getIO } = require('../config/socket');
 
 // @desc    Get all tasks
 // @route   GET /api/admin/tasks
@@ -535,6 +536,158 @@ exports.getTasksByEmployee = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching employee tasks',
+      error: error.message
+    });
+  }
+};
+
+exports.createTask = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      project,
+      assignedTo,
+      priority,
+      dueDate,
+      estimatedHours
+    } = req.body;
+
+    // ... your existing validation code ...
+
+    // Create task
+    const task = await Task.create({
+      title,
+      description,
+      project,
+      assignedTo,
+      priority: priority || 'medium',
+      status: 'pending',
+      dueDate,
+      estimatedHours,
+      createdBy: req.user.id
+    });
+
+    // Populate task data
+    await task.populate('project', 'name');
+    await task.populate('assignedTo', 'name email');
+    await task.populate('createdBy', 'name email');
+
+    // ✅ EMIT SOCKET EVENT
+    try {
+      const io = getIO();
+      
+      // Notify assigned employee
+      if (task.assignedTo) {
+        io.to(`employee-${task.assignedTo._id}`).emit('task-assigned', {
+          task: {
+            _id: task._id,
+            title: task.title,
+            description: task.description,
+            priority: task.priority,
+            dueDate: task.dueDate,
+            status: task.status
+          },
+          assignedBy: req.user.name || 'Admin'
+        });
+      }
+      
+      // Notify all admins
+      io.to('admin').emit('task-created', {
+        task,
+        employeeId: task.assignedTo?._id,
+        employeeName: task.assignedTo?.name
+      });
+      
+      console.log('📡 Task assigned event emitted');
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Task created successfully',
+      data: task
+    });
+  } catch (error) {
+    console.error('Create task error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating task',
+      error: error.message
+    });
+  }
+};
+
+exports.updateTask = async (req, res) => {
+  try {
+    let task = await Task.findById(req.params.id);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Update fields
+    const allowedFields = [
+      'title',
+      'description',
+      'priority',
+      'status',
+      'dueDate',
+      'estimatedHours',
+      'assignedTo'
+    ];
+
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        task[field] = req.body[field];
+      }
+    });
+
+    // Update status timestamps
+    if (req.body.status === 'in-progress' && task.status !== 'in-progress') {
+      task.startedAt = new Date();
+    }
+
+    if (req.body.status === 'completed' && task.status !== 'completed') {
+      task.completedAt = new Date();
+    }
+
+    await task.save();
+
+    // Populate task data
+    await task.populate('project', 'name');
+    await task.populate('assignedTo', 'name email');
+    await task.populate('createdBy', 'name email');
+
+    // ✅ EMIT SOCKET EVENT
+    try {
+      const io = getIO();
+      io.to('admin').emit('task-updated', {
+        taskId: task._id,
+        title: task.title,
+        status: task.status,
+        employeeName: task.assignedTo?.name,
+        employeeId: task.assignedTo?._id
+      });
+      console.log('📡 Task update event emitted to admins');
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Task updated successfully',
+      data: task
+    });
+  } catch (error) {
+    console.error('Update task error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating task',
       error: error.message
     });
   }
