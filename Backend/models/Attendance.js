@@ -1,13 +1,10 @@
-// models/Attendance.js
-// Updated to match attendanceController.js structure
-
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const attendanceSchema = new mongoose.Schema(
   {
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Employee',
+      ref: "Employee",
       required: true,
     },
     date: {
@@ -18,9 +15,11 @@ const attendanceSchema = new mongoose.Schema(
       type: Date,
     },
     checkInLocation: {
-      type: Object,
-      enum: ['Office', 'Remote', 'Field'],
-      default: 'Office',
+      type: String,
+      enum: ["Office", "Remote", "Field"],
+      default: "Office",
+    },
+    checkInCoordinates: {
       latitude: Number,
       longitude: Number,
       accuracy: Number,
@@ -29,15 +28,17 @@ const attendanceSchema = new mongoose.Schema(
     checkInDeviceInfo: String,
     checkInMethod: {
       type: String,
-      enum: ['Auto', 'Manual', 'QR Code', 'WiFi', 'Bluetooth'],
-      default: 'Manual',
+      enum: ["Auto", "Manual", "QR Code", "WiFi", "Bluetooth"],
+      default: "Manual",
     },
     checkOutTime: {
       type: Date,
     },
     checkOutLocation: {
       type: String,
-      enum: ['Office', 'Remote', 'Field'],
+      enum: ["Office", "Remote", "Field"],
+    },
+    checkOutCoordinates: {
       latitude: Number,
       longitude: Number,
       accuracy: Number,
@@ -46,12 +47,19 @@ const attendanceSchema = new mongoose.Schema(
     checkOutDeviceInfo: String,
     checkOutMethod: {
       type: String,
-      enum: ['Auto', 'Manual', 'QR Code', 'WiFi', 'Bluetooth'],
+      enum: ["Auto", "Manual", "QR Code", "WiFi", "Bluetooth"],
     },
     status: {
       type: String,
-      enum: ['present', 'absent', 'late', 'leave', 'half-day', 'work-from-home'],
-      default: 'present',
+      enum: [
+        "present",
+        "absent",
+        "late",
+        "leave",
+        "half-day",
+        "work-from-home",
+      ],
+      default: "present",
     },
     workHours: {
       type: Number,
@@ -64,8 +72,8 @@ const attendanceSchema = new mongoose.Schema(
         duration: Number, // in minutes
         type: {
           type: String,
-          enum: ['Lunch', 'Tea', 'Other'],
-          default: 'Other',
+          enum: ["Lunch", "Tea", "Other"],
+          default: "Other",
         },
       },
     ],
@@ -101,19 +109,19 @@ const attendanceSchema = new mongoose.Schema(
     correctionRequest: {
       requestedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: "User",
       },
       reason: String,
       correctCheckInTime: Date,
       correctCheckOutTime: Date,
       status: {
         type: String,
-        enum: ['pending', 'approved', 'rejected'],
-        default: 'pending',
+        enum: ["pending", "approved", "rejected"],
+        default: "pending",
       },
       approvedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: "User",
       },
       approvedAt: Date,
       requestedAt: Date,
@@ -123,17 +131,17 @@ const attendanceSchema = new mongoose.Schema(
     leaveRequest: {
       leaveType: {
         type: String,
-        enum: ['sick', 'casual', 'vacation', 'emergency', 'unpaid'],
+        enum: ["sick", "casual", "vacation", "emergency", "unpaid"],
       },
       reason: String,
       status: {
         type: String,
-        enum: ['pending', 'approved', 'rejected'],
-        default: 'pending',
+        enum: ["pending", "approved", "rejected"],
+        default: "pending",
       },
       approvedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: "User",
       },
       approvedAt: Date,
       requestedAt: Date,
@@ -146,7 +154,7 @@ const attendanceSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Compound index for employee + date (unique attendance per day)
@@ -155,7 +163,7 @@ attendanceSchema.index({ date: 1 });
 attendanceSchema.index({ status: 1 });
 
 // Calculate working hours on save
-attendanceSchema.pre('save', function (next) {
+attendanceSchema.pre("save", function (next) {
   if (this.checkInTime && this.checkOutTime) {
     const diffMs = this.checkOutTime - this.checkInTime;
     const hours = diffMs / (1000 * 60 * 60);
@@ -167,6 +175,4 @@ attendanceSchema.pre('save', function (next) {
   next();
 });
 
-
-
-module.exports = mongoose.model('Attendance', attendanceSchema);
+module.exports = mongoose.model("Attendance", attendanceSchema);

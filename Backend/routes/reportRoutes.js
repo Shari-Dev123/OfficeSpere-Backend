@@ -37,6 +37,12 @@ router.get(
   reportController.getProductivityReport
 );
 
+router.get(
+  '/admin/employee',
+  protect,
+  authorize('admin'),
+  reportController.getProductivityReport
+);
 // Frontend: adminAPI.getAttendanceReportData() → GET /api/reports/admin/attendance
 router.get(
   '/admin/attendance',

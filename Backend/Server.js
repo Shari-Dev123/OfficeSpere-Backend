@@ -47,14 +47,14 @@ if (process.env.NODE_ENV === 'development') {
 // ==========================================
 
 // Import routes
-const adminRoutes = require('./Routes/adminRoutes');
-const attendanceRoutes = require('./Routes/attendanceRoutes');
-const authRoutes = require('./Routes/authRoutes');
-const clientRoutes = require('./Routes/clientRoutes');
-const employeeRoutes = require('./Routes/employeeRoutes');
-const meetingRoutes = require('./Routes/meetingRoutes');
-const reportRoutes = require('./Routes/reportRoutes');
-const taskRoutes = require('./Routes/taskRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
+const authRoutes = require('./routes/authRoutes');
+const clientRoutes = require('./routes/clientRoutes');
+const employeeRoutes = require('./routes/employeeRoutes');
+const meetingRoutes = require('./routes/meetingRoutes');
+const reportRoutes = require('./routes/reportRoutes');
+const taskRoutes = require('./routes/taskRoutes');
 
 // ✅ REMOVED: projectRoutes - Projects handled by admin/client routes
 // ❌ OLD: const projectRoutes = require('./Routes/attendanceRoutes'); // THIS WAS WRONG!
@@ -99,9 +99,9 @@ app.get('/', (req, res) => {
 // MOUNT ROUTES
 // ==========================================
 app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);        // ✅ Admin routes (includes /admin/projects)
+app.use('/api/admin', adminRoutes);
 app.use('/api/employee', employeeRoutes);
-app.use('/api/client', clientRoutes);      // ✅ Client routes (includes /client/projects)
+app.use('/api/client', clientRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/reports', reportRoutes);
