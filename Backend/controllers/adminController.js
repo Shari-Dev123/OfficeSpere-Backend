@@ -11,7 +11,9 @@ const Task = require("../models/Task");
 const Attendance = require("../models/Attendance");
 const Meeting = require("../models/Meeting");
 const DailyReport = require("../models/DailyReport");
-const { getIO } = require('../config/socket'); 
+const Admin = require('../models/Admin'); // ✅ ADD THIS
+const { getIO } = require('../config/socket');
+
 // ============================================
 // DASHBOARD
 // ============================================
@@ -40,7 +42,7 @@ const getDashboard = async (req, res) => {
       }
     });
 
-    const presentToday = todayAttendance.filter(a => 
+    const presentToday = todayAttendance.filter(a =>
       a.status === 'present' || a.status === 'late'
     ).length;
 
@@ -58,11 +60,11 @@ const getDashboard = async (req, res) => {
     const attendanceData = todayAttendance.map(record => ({
       employeeName: record.employeeId?.userId?.name || 'Unknown',
       email: record.employeeId?.userId?.email || '',
-      checkInTime: record.checkInTime 
-        ? new Date(record.checkInTime).toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          })
+      checkInTime: record.checkInTime
+        ? new Date(record.checkInTime).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
         : 'Not checked in',
       status: record.status || 'absent',
       isLate: record.isLate || false
@@ -98,13 +100,11 @@ const getDashboard = async (req, res) => {
         type: 'attendance'
       }))
     ].sort((a, b) => {
-      // Sort by most recent
       const timeA = a.time.includes('ago') ? 0 : 1;
       const timeB = b.time.includes('ago') ? 0 : 1;
       return timeA - timeB;
     }).slice(0, 5);
 
-    // ✅ Return data in the format frontend expects
     res.status(200).json({
       success: true,
       data: {
@@ -113,7 +113,6 @@ const getDashboard = async (req, res) => {
         activeProjects,
         pendingTasks,
         attendanceData: attendanceData.sort((a, b) => {
-          // Sort by check-in time
           if (!a.checkInTime) return 1;
           if (!b.checkInTime) return -1;
           return b.checkInTime.localeCompare(a.checkInTime);
@@ -135,26 +134,26 @@ const getDashboard = async (req, res) => {
 // Helper function to format time ago
 function formatTimeAgo(date) {
   if (!date) return 'just now';
-  
+
   const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-  
+
   if (seconds < 60) return 'just now';
-  
+
   let interval = seconds / 31536000;
   if (interval > 1) return Math.floor(interval) + " years ago";
-  
+
   interval = seconds / 2592000;
   if (interval > 1) return Math.floor(interval) + " months ago";
-  
+
   interval = seconds / 86400;
   if (interval > 1) return Math.floor(interval) + " days ago";
-  
+
   interval = seconds / 3600;
   if (interval > 1) return Math.floor(interval) + " hours ago";
-  
+
   interval = seconds / 60;
   if (interval > 1) return Math.floor(interval) + " minutes ago";
-  
+
   return Math.floor(seconds) + " seconds ago";
 }
 
@@ -162,14 +161,10 @@ function formatTimeAgo(date) {
 // EMPLOYEE MANAGEMENT
 // ============================================
 
-// @desc    Get all employees
-// @route   GET /api/admin/employees
-// @access  Private/Admin
 const getEmployees = async (req, res) => {
   try {
     const { search, department, status, page = 1, limit = 10 } = req.query;
 
-    // Build query
     let query = {};
 
     if (search) {
@@ -188,18 +183,15 @@ const getEmployees = async (req, res) => {
       query.isActive = status === "active";
     }
 
-    // Pagination
     const skip = (page - 1) * limit;
     const total = await Employee.countDocuments(query);
 
-    // Fix: Populate 'userId' not 'user'
     const employees = await Employee.find(query)
       .populate("userId", "name email phone avatar isActive createdAt")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Transform data to match what frontend expects
     const transformedEmployees = employees.map((employee) => {
       const userData = employee.userId || {};
 
@@ -238,37 +230,13 @@ const getEmployees = async (req, res) => {
   }
 };
 
-// @desc    Add new employee
-// @route   POST /api/admin/employees
-// @access  Private/Admin
 const addEmployee = async (req, res) => {
   try {
-    console.log("📝 Add employee request body:", req.body);
-
     const {
-      name,
-      email,
-      password,
-      phone,
-      position,
-      department,
-      salary,
-      joinDate,
-      status,
-      address,
+      name, email, password, phone, position, department,
+      salary, joinDate, status, address,
     } = req.body;
 
-    console.log("📊 Received data:", {
-      name,
-      email,
-      position,
-      department,
-      salary,
-      joinDate,
-      status,
-    });
-
-    // Validate required fields
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -276,21 +244,13 @@ const addEmployee = async (req, res) => {
       });
     }
 
-    if (!position) {
+    if (!position || !department) {
       return res.status(400).json({
         success: false,
-        message: "Position is required",
+        message: "Position and department are required",
       });
     }
 
-    if (!department) {
-      return res.status(400).json({
-        success: false,
-        message: "Department is required",
-      });
-    }
-
-    // Format department
     let formattedDepartment = department;
     if (formattedDepartment) {
       formattedDepartment =
@@ -302,9 +262,6 @@ const addEmployee = async (req, res) => {
       }
     }
 
-    console.log("🔄 Formatted department:", formattedDepartment);
-
-    // Check if email already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -313,8 +270,6 @@ const addEmployee = async (req, res) => {
       });
     }
 
-    // Create User account
-    console.log("👤 Creating user account...");
     const user = await User.create({
       name,
       email,
@@ -324,18 +279,10 @@ const addEmployee = async (req, res) => {
       isActive: true,
     });
 
-    console.log("✅ User created with ID:", user._id);
-
-    // Generate employee ID
     const employeeCount = await Employee.countDocuments();
     const employeeId = `EMP${String(employeeCount + 1).padStart(4, "0")}`;
-    console.log("📇 Generated employee ID:", employeeId);
-
-    // Map status to isActive
     const isActive = status !== "inactive";
 
-    // Create Employee profile
-    console.log("👷 Creating employee profile...");
     const employeeData = {
       userId: user._id,
       employeeId: employeeId,
@@ -367,22 +314,13 @@ const addEmployee = async (req, res) => {
     if (address) {
       employeeData.address = { street: address };
     }
-    if (phone) {
-      employeeData.phone = phone;
-    }
-
-    console.log("📋 Employee data to create:", employeeData);
 
     const employee = await Employee.create(employeeData);
-    console.log("✅ Employee created with ID:", employee._id);
-
-    // Get populated employee
     const populatedEmployee = await Employee.findById(employee._id).populate(
       "userId",
       "name email phone",
     );
 
-    // Transform response
     const responseData = {
       _id: populatedEmployee._id,
       name: populatedEmployee.userId?.name || name,
@@ -396,20 +334,13 @@ const addEmployee = async (req, res) => {
       salary: populatedEmployee.salary,
     };
 
-    console.log("📤 Sending response:", responseData);
-
     res.status(201).json({
       success: true,
       message: "Employee added successfully",
       employee: responseData,
     });
   } catch (error) {
-    console.error("❌ Add employee error details:", {
-      name: error.name,
-      message: error.message,
-      errors: error.errors,
-      stack: error.stack,
-    });
+    console.error("Add employee error:", error);
 
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((err) => err.message);
@@ -437,9 +368,6 @@ const addEmployee = async (req, res) => {
   }
 };
 
-// @desc    Get single employee
-// @route   GET /api/admin/employees/:id
-// @access  Private/Admin
 const getEmployee = async (req, res) => {
   try {
     const employee = await Employee.findById(req.params.id).populate(
@@ -454,7 +382,6 @@ const getEmployee = async (req, res) => {
       });
     }
 
-    // Transform to match frontend expectations
     const employeeData = {
       _id: employee._id,
       name: employee.userId?.name || "No Name",
@@ -472,18 +399,16 @@ const getEmployee = async (req, res) => {
       experience: employee.experience || 0,
       user: employee.userId
         ? {
-            email: employee.userId.email,
-            role: employee.userId.role,
-          }
+          email: employee.userId.email,
+          role: employee.userId.role,
+        }
         : null,
     };
 
-    // Get employee's projects
     const projects = await Project.find({
       team: employee._id,
     }).select("name status startDate endDate");
 
-    // Get employee's tasks
     const tasks = await Task.find({
       assignedTo: employee._id,
     }).select("title status priority dueDate");
@@ -506,9 +431,6 @@ const getEmployee = async (req, res) => {
   }
 };
 
-// @desc    Update employee
-// @route   PUT /api/admin/employees/:id
-// @access  Private/Admin
 const updateEmployee = async (req, res) => {
   try {
     const employee = await Employee.findById(req.params.id).populate(
@@ -523,7 +445,6 @@ const updateEmployee = async (req, res) => {
       });
     }
 
-    // Update fields
     const allowedFields = [
       "designation",
       "department",
@@ -552,7 +473,6 @@ const updateEmployee = async (req, res) => {
 
     await employee.save();
 
-    // Update User if needed
     if (employee.userId) {
       const userUpdate = {};
       if (req.body.name) userUpdate.name = req.body.name;
@@ -564,7 +484,6 @@ const updateEmployee = async (req, res) => {
       }
     }
 
-    // Get updated employee
     const updatedEmployee = await Employee.findById(employee._id).populate(
       "userId",
       "name email phone",
@@ -596,9 +515,6 @@ const updateEmployee = async (req, res) => {
   }
 };
 
-// @desc    Delete employee
-// @route   DELETE /api/admin/employees/:id
-// @access  Private/Admin
 const deleteEmployee = async (req, res) => {
   try {
     const employee = await Employee.findById(req.params.id);
@@ -610,11 +526,9 @@ const deleteEmployee = async (req, res) => {
       });
     }
 
-    // Soft delete
     employee.isActive = false;
     await employee.save();
 
-    // Deactivate user account
     await User.findByIdAndUpdate(employee.user, { isActive: false });
 
     res.status(200).json({
@@ -635,14 +549,10 @@ const deleteEmployee = async (req, res) => {
 // CLIENT MANAGEMENT
 // ============================================
 
-// @desc    Get all clients
-// @route   GET /api/admin/clients
-// @access  Private/Admin
 const getClients = async (req, res) => {
   try {
     const { search, status, page = 1, limit = 10 } = req.query;
 
-    // Build query
     let query = {};
 
     if (search) {
@@ -657,7 +567,6 @@ const getClients = async (req, res) => {
       query.isActive = status === "active";
     }
 
-    // Pagination
     const skip = (page - 1) * limit;
     const total = await Client.countDocuments(query);
 
@@ -685,9 +594,6 @@ const getClients = async (req, res) => {
   }
 };
 
-// @desc    Get single client
-// @route   GET /api/admin/clients/:id
-// @access  Private/Admin
 const getClient = async (req, res) => {
   try {
     const client = await Client.findById(req.params.id).populate(
@@ -702,7 +608,6 @@ const getClient = async (req, res) => {
       });
     }
 
-    // Get client's projects
     const projects = await Project.find({
       client: client._id,
     }).select("name status startDate endDate budget");
@@ -724,34 +629,13 @@ const getClient = async (req, res) => {
   }
 };
 
-// @desc    Add new client
-// @route   POST /api/admin/clients
-// @access  Private/Admin
 const addClient = async (req, res) => {
   try {
-    console.log('📝 Add client request body:', req.body);
-
     const {
-      name,
-      email,
-      password,
-      phone,
-      address,
-      company: companyName,
-      industry,
-      website,
-      status
+      name, email, password, phone, address,
+      company: companyName, industry, website, status
     } = req.body;
 
-    console.log('📊 Received client data:', {
-      name,
-      email,
-      companyName,
-      industry,
-      website
-    });
-
-    // Validate required fields
     if (!name || !email || !password || !companyName) {
       return res.status(400).json({
         success: false,
@@ -759,7 +643,6 @@ const addClient = async (req, res) => {
       });
     }
 
-    // Check if email exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -768,16 +651,15 @@ const addClient = async (req, res) => {
       });
     }
 
-    // Format industry
     let formattedIndustry = '';
     if (industry) {
       formattedIndustry = industry.charAt(0).toUpperCase() + industry.slice(1).toLowerCase();
-      
+
       const validIndustries = [
-        'Technology', 'Healthcare', 'Finance', 'Education', 
+        'Technology', 'Healthcare', 'Finance', 'Education',
         'Retail', 'Manufacturing', 'Real Estate', 'Other'
       ];
-      
+
       if (!validIndustries.includes(formattedIndustry)) {
         return res.status(400).json({
           success: false,
@@ -787,10 +669,6 @@ const addClient = async (req, res) => {
       }
     }
 
-    console.log('🔄 Formatted industry:', formattedIndustry);
-
-    // Create User account
-    console.log('👤 Creating user account...');
     const user = await User.create({
       name,
       email,
@@ -800,18 +678,10 @@ const addClient = async (req, res) => {
       isActive: true
     });
 
-    console.log('✅ User created with ID:', user._id);
-
-    // Generate client ID
     const clientCount = await Client.countDocuments();
     const clientId = `CL${String(clientCount + 1).padStart(4, '0')}`;
-    console.log('📇 Generated client ID:', clientId);
-
-    // Map status
     const isActive = status !== 'inactive';
 
-    // Create Client profile
-    console.log('🏢 Creating client profile...');
     const clientData = {
       userId: user._id,
       clientId: clientId,
@@ -830,16 +700,10 @@ const addClient = async (req, res) => {
       }
     };
 
-    console.log('📋 Client data to create:', clientData);
-
     const client = await Client.create(clientData);
-    console.log('✅ Client created with ID:', client._id);
-
-    // Get populated client
     const populatedClient = await Client.findById(client._id)
       .populate('userId', 'name email phone');
 
-    // Transform response
     const responseData = {
       _id: populatedClient._id,
       name: populatedClient.userId?.name || name,
@@ -854,21 +718,14 @@ const addClient = async (req, res) => {
       address: populatedClient.address?.street || address
     };
 
-    console.log('📤 Sending response:', responseData);
-
     res.status(201).json({
       success: true,
       message: 'Client added successfully',
       client: responseData
     });
   } catch (error) {
-    console.error('❌ Add client error details:', {
-      name: error.name,
-      message: error.message,
-      errors: error.errors,
-      stack: error.stack
-    });
-    
+    console.error('Add client error:', error);
+
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -878,7 +735,7 @@ const addClient = async (req, res) => {
         error: error.message
       });
     }
-    
+
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -886,7 +743,7 @@ const addClient = async (req, res) => {
         error: error.message
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: 'Error adding client',
@@ -895,9 +752,6 @@ const addClient = async (req, res) => {
   }
 };
 
-// @desc    Update client
-// @route   PUT /api/admin/clients/:id
-// @access  Private/Admin
 const updateClient = async (req, res) => {
   try {
     const client = await Client.findById(req.params.id);
@@ -909,7 +763,6 @@ const updateClient = async (req, res) => {
       });
     }
 
-    // Update fields
     const allowedFields = [
       "name",
       "phone",
@@ -943,9 +796,6 @@ const updateClient = async (req, res) => {
   }
 };
 
-// @desc    Delete client
-// @route   DELETE /api/admin/clients/:id
-// @access  Private/Admin
 const deleteClient = async (req, res) => {
   try {
     const client = await Client.findById(req.params.id);
@@ -957,11 +807,9 @@ const deleteClient = async (req, res) => {
       });
     }
 
-    // Soft delete
     client.isActive = false;
     await client.save();
 
-    // Deactivate user account
     await User.findByIdAndUpdate(client.user, { isActive: false });
 
     res.status(200).json({
@@ -982,109 +830,171 @@ const deleteClient = async (req, res) => {
 // SETTINGS MANAGEMENT
 // ============================================
 
-// @desc    Get company settings
-// @route   GET /api/admin/settings
-// @access  Private/Admin
 const getSettings = async (req, res) => {
   try {
-    const settings = {
-      company: {
-        name: "OfficeSphere",
-        email: "info@officesphere.com",
-        phone: "+1234567890",
-        address: "123 Business Street, City, Country",
-        website: "https://officesphere.com",
-      },
-      attendance: {
-        workingHours: {
-          start: "09:00",
-          end: "18:00",
-        },
-        gracePeriod: 15,
-        autoCheckout: true,
-        autoCheckoutTime: "19:00",
-      },
-      tasks: {
-        autoAssign: false,
-        reminderBeforeDeadline: 24,
-      },
-      notifications: {
-        email: true,
-        push: false,
-      },
-    };
+    console.log('====================================');
+    console.log('📥 GET Settings called');
+    console.log('User ID:', req.user.id);
+    console.log('====================================');
+
+    let admin = await Admin.findOne({ userId: req.user.id });
+
+    if (!admin) {
+      console.log('⚠️ No admin document found, creating default...');
+
+      admin = await Admin.create({
+        userId: req.user.id,
+        designation: 'System Administrator',
+        department: 'Administration',
+      });
+
+      console.log('✅ Default admin created');
+    }
+
+    const settings = admin.getFormattedSettings();
+
+    console.log('✅ Settings to send:', settings);
+    console.log('====================================');
 
     res.status(200).json({
       success: true,
-      data: settings,
+      data: settings, // ✅ This is correct
+      message: 'Settings fetched successfully'
     });
+
   } catch (error) {
-    console.error("Get settings error:", error);
+    console.error('====================================');
+    console.error('❌ Error fetching settings:', error);
+    console.error('====================================');
+
     res.status(500).json({
       success: false,
-      message: "Error fetching settings",
-      error: error.message,
+      message: 'Failed to fetch settings',
+      error: error.message
     });
   }
 };
-
-// @desc    Update company settings
-// @route   PUT /api/admin/settings
-// @access  Private/Admin
 const updateSettings = async (req, res) => {
   try {
-    const updatedSettings = req.body;
+    console.log('====================================');
+    console.log('📝 UPDATE Settings called');
+    console.log('User ID:', req.user.id);
+    console.log('Received data:', JSON.stringify(req.body, null, 2));
+    console.log('====================================');
+
+    const { company, work, attendance, email } = req.body;
+
+    // Validate
+    if (!company || !work || !attendance || !email) {
+      console.log('❌ Missing required sections');
+      return res.status(400).json({
+        success: false,
+        message: 'All settings sections are required'
+      });
+    }
+
+    // Find or create admin
+    let admin = await Admin.findOne({ userId: req.user.id });
+
+    if (!admin) {
+      console.log('⚠️ Creating new admin document...');
+      admin = new Admin({
+        userId: req.user.id,
+        designation: 'System Administrator',
+        department: 'Administration',
+      });
+    }
+
+    // Update settings
+    admin.companyInfo = {
+      companyName: company.companyName,
+      email: company.email,
+      phone: company.phone,
+      address: company.address,
+      city: company.city,
+      state: company.state,
+      zipCode: company.zipCode,
+      country: company.country,
+      website: company.website,
+      logo: company.logo || '',
+    };
+
+    admin.workSettings = {
+      workingDays: work.workingDays,
+      startTime: work.startTime,
+      endTime: work.endTime,
+      lunchBreak: work.lunchBreak,
+      timezone: work.timezone,
+      weekendDays: work.weekendDays,
+    };
+
+    admin.attendanceSettings = {
+      autoCheckout: attendance.autoCheckout,
+      lateThreshold: attendance.lateThreshold,
+      halfDayHours: attendance.halfDayHours,
+      fullDayHours: attendance.fullDayHours,
+      overtimeRate: attendance.overtimeRate,
+      allowManualCorrection: attendance.allowManualCorrection,
+    };
+
+    admin.emailSettings = {
+      notifyNewEmployee: email.notifyNewEmployee,
+      notifyTaskAssignment: email.notifyTaskAssignment,
+      notifyMeetings: email.notifyMeetings,
+      dailyReports: email.dailyReports,
+      weeklyReports: email.weeklyReports,
+      monthlyReports: email.monthlyReports,
+    };
+
+    // Save to database
+    await admin.save();
+
+    console.log('✅ Settings saved to database successfully!');
+    console.log('====================================');
+
+    // Get formatted settings to return
+    const updatedSettings = admin.getFormattedSettings();
 
     res.status(200).json({
       success: true,
-      message: "Settings updated successfully",
       data: updatedSettings,
+      message: 'Settings updated successfully'
     });
+
   } catch (error) {
-    console.error("Update settings error:", error);
+    console.error('====================================');
+    console.error('❌ Error updating settings:', error);
+    console.error('Error message:', error.message);
+    console.error('====================================');
+    
     res.status(500).json({
       success: false,
-      message: "Error updating settings",
-      error: error.message,
+      message: 'Failed to update settings',
+      error: error.message
     });
   }
 };
+// ============================================
+// PROJECTS
+// ============================================
 
-// @desc    Get all projects
-// @route   GET /api/admin/projects
-// @access  Private/Admin
 const getProjects = async (req, res) => {
   try {
-    console.log('====================================');
-    console.log('📊 ADMIN: Fetching projects...');
-    console.log('====================================');
-    
     const { status, priority, page = 1, limit = 10 } = req.query;
-    
-    console.log('📥 Query params:', { status, priority, page, limit });
-    
-    // Build query
+
     const query = { isActive: true };
-    
+
     if (status && status !== 'all') {
       query.status = new RegExp(`^${status}$`, 'i');
-      console.log('🔍 Filtering by status:', status);
     }
-    
+
     if (priority && priority !== 'all') {
       query.priority = new RegExp(`^${priority}$`, 'i');
-      console.log('🔍 Filtering by priority:', priority);
     }
-    
-    console.log('🔍 Final query:', JSON.stringify(query, null, 2));
-    
-    // Pagination
+
     const skip = (page - 1) * limit;
     const total = await Project.countDocuments(query);
-    
-    console.log('📊 Total projects matching query:', total);
-    
-    // Fetch projects
+
     const projects = await Project.find(query)
       .populate('client', 'companyName clientId email contactPerson phone')
       .populate('projectManager', 'name email designation')
@@ -1093,20 +1003,7 @@ const getProjects = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit))
       .lean();
-    
-    console.log('✅ Found projects:', projects.length);
-    
-    if (projects.length > 0) {
-      console.log('📋 Projects list:');
-      projects.forEach((p, i) => {
-        console.log(`   ${i + 1}. "${p.name}" - ${p.status} - Client: ${p.client?.companyName || 'N/A'}`);
-      });
-    } else {
-      console.log('⚠️ No projects found matching criteria');
-    }
-    
-    console.log('====================================');
-    
+
     res.status(200).json({
       success: true,
       total,
@@ -1116,16 +1013,9 @@ const getProjects = async (req, res) => {
       projects: projects,
       message: projects.length === 0 ? 'No projects found' : 'Projects fetched successfully'
     });
-    
+
   } catch (error) {
-    console.error('====================================');
-    console.error('❌ ADMIN GET PROJECTS ERROR');
-    console.error('====================================');
-    console.error('Error:', error);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    console.error('====================================');
-    
+    console.error('Admin get projects error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching projects',
@@ -1134,44 +1024,29 @@ const getProjects = async (req, res) => {
   }
 };
 
-// @desc    Get daily attendance for admin
-// @route   GET /api/admin/attendance
-// @access  Private/Admin
+// ============================================
+// ATTENDANCE
+// ============================================
+
 const getDailyAttendance = async (req, res) => {
   try {
-    console.log('====================================');
-    console.log('📊 ADMIN: Fetching daily attendance');
-    console.log('====================================');
-    console.log('📥 Query params:', req.query);
-    
     const { date } = req.query;
-    
-    // Parse the date or use today
+
     let queryDate;
     if (date) {
       queryDate = new Date(date);
     } else {
       queryDate = new Date();
     }
-    
-    // Set to start of day
+
     queryDate.setHours(0, 0, 0, 0);
     const nextDay = new Date(queryDate);
     nextDay.setDate(nextDay.getDate() + 1);
-    
-    console.log('📅 Query date range:', {
-      from: queryDate,
-      to: nextDay
-    });
-    
-    // Get all employees
+
     const allEmployees = await Employee.find({ isActive: true })
       .populate('userId', 'name email')
       .select('name email employeeId designation');
-    
-    console.log('👥 Total active employees:', allEmployees.length);
-    
-    // Get attendance records for the date
+
     const attendanceRecords = await Attendance.find({
       date: { $gte: queryDate, $lt: nextDay }
     }).populate({
@@ -1181,25 +1056,22 @@ const getDailyAttendance = async (req, res) => {
         select: 'name email'
       }
     });
-    
-    console.log('📋 Attendance records found:', attendanceRecords.length);
-    
-    // Create attendance data for all employees
+
     const attendanceData = allEmployees.map(employee => {
       const record = attendanceRecords.find(
         r => r.employeeId?._id?.toString() === employee._id.toString()
       );
-      
+
       if (record) {
         const checkIn = record.checkInTime;
         const checkOut = record.checkOutTime;
         let workHours = 0;
-        
+
         if (checkIn && checkOut) {
           const diff = new Date(checkOut) - new Date(checkIn);
           workHours = (diff / (1000 * 60 * 60)).toFixed(1);
         }
-        
+
         return {
           employeeName: employee.userId?.name || employee.name || 'Unknown',
           email: employee.userId?.email || employee.email || '-',
@@ -1225,18 +1097,14 @@ const getDailyAttendance = async (req, res) => {
         };
       }
     });
-    
-    // Calculate stats
+
     const stats = {
       total: attendanceData.length,
       present: attendanceData.filter(a => a.status === 'present').length,
       late: attendanceData.filter(a => a.status === 'late').length,
       absent: attendanceData.filter(a => a.status === 'absent').length
     };
-    
-    console.log('📊 Attendance stats:', stats);
-    console.log('====================================');
-    
+
     res.status(200).json({
       success: true,
       date: queryDate,
@@ -1249,14 +1117,9 @@ const getDailyAttendance = async (req, res) => {
         return new Date(a.checkIn) - new Date(b.checkIn);
       })
     });
-    
+
   } catch (error) {
-    console.error('====================================');
-    console.error('❌ GET DAILY ATTENDANCE ERROR');
-    console.error('====================================');
-    console.error('Error:', error);
-    console.error('====================================');
-    
+    console.error('Get daily attendance error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching attendance data',
@@ -1266,7 +1129,7 @@ const getDailyAttendance = async (req, res) => {
 };
 
 // ============================================
-// EXPORTS - MUST BE AT THE VERY END
+// EXPORTS
 // ============================================
 module.exports = {
   getDashboard,
