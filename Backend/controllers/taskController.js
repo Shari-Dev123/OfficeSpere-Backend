@@ -118,11 +118,12 @@ exports.createTask = async (req, res) => {
       project,
       assignedTo,
       priority,
+      status,
       dueDate,
       estimatedHours
     } = req.body;
 
-    // Verify project exists
+    // Verify project exists (if provided)
     if (project) {
       const projectExists = await Project.findById(project);
       if (!projectExists) {
@@ -134,28 +135,40 @@ exports.createTask = async (req, res) => {
     }
 
     // Verify assigned employee exists
-    if (assignedTo) {
-      const employeeExists = await Employee.findById(assignedTo);
-      if (!employeeExists) {
-        return res.status(404).json({
-          success: false,
-          message: 'Employee not found'
-        });
-      }
+    if (!assignedTo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please assign this task to an employee'
+      });
     }
 
-    // Create task
-    const task = await Task.create({
+    const employeeExists = await Employee.findById(assignedTo);
+    if (!employeeExists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    // Create task with assignedBy and createdBy
+    const taskData = {
       title,
       description,
-      project,
       assignedTo,
       priority: priority || 'medium',
-      status: 'pending',
+      status: status || 'pending',
       dueDate,
-      estimatedHours,
-      createdBy: req.user.id
-    });
+      estimatedHours: estimatedHours || 0,
+      assignedBy: req.user.id, // ✅ Admin who created the task
+      createdBy: req.user.id    // ✅ Admin who created the task
+    };
+
+    // Only add project if provided
+    if (project) {
+      taskData.project = project;
+    }
+
+    const task = await Task.create(taskData);
 
     // Populate task data
     await task.populate('project', 'name');

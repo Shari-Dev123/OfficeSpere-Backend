@@ -74,7 +74,7 @@ exports.getEmployeeDashboard = async (req, res) => {
     })
       .sort({ createdAt: -1 })
       .limit(5)
-      .populate('projectId', 'name')
+      .populate('project', 'name')
       .select('title status priority dueDate');
 
     // Get pending daily reports count
@@ -505,14 +505,14 @@ exports.getMyTasks = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .populate('projectId', 'name status')
+      .populate('project', 'name status')
       .populate('assignedBy', 'name email');
 
     const count = await Task.countDocuments(query);
 
     res.status(200).json({
       success: true,
-      data: tasks,
+      tasks: tasks,
       pagination: {
         total: count,
         page: parseInt(page),
@@ -544,7 +544,7 @@ exports.getTask = async (req, res) => {
       _id: id,
       assignedTo: employee._id
     })
-      .populate('projectId', 'name status')
+      .populate('project', 'name status')
       .populate('assignedBy', 'name email')
       .populate('assignedTo', 'userId');
 
@@ -928,7 +928,7 @@ exports.getProject = async (req, res) => {
 
     // Get project tasks
     const tasks = await Task.find({
-      projectId: project._id,
+      project: project._id,
       assignedTo: employee._id
     })
       .sort({ createdAt: -1 })

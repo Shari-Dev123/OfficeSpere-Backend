@@ -4,7 +4,6 @@ const taskSchema = new mongoose.Schema(
   {
     taskId: {
       type: String,
-      required: true,
       unique: true,
       uppercase: true,
     },
@@ -20,7 +19,7 @@ const taskSchema = new mongoose.Schema(
     project: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Project',
-      required: true,
+      required: false, // ✅ Made optional
     },
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
@@ -30,17 +29,22 @@ const taskSchema = new mongoose.Schema(
     assignedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: false, // ✅ Made optional (will be set by controller)
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false,
     },
     status: {
       type: String,
-      enum: ['Todo', 'In Progress', 'Review', 'Completed', 'On Hold'],
-      default: 'Todo',
+      enum: ['pending', 'in-progress', 'completed', 'on-hold'], // ✅ Match frontend
+      default: 'pending',
     },
     priority: {
       type: String,
-      enum: ['Low', 'Medium', 'High', 'Urgent'],
-      default: 'Medium',
+      enum: ['low', 'medium', 'high', 'urgent'], // ✅ Match frontend (lowercase)
+      default: 'medium',
     },
     dueDate: {
       type: Date,
@@ -54,15 +58,17 @@ const taskSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    startedAt: Date,
+    completedAt: Date,
     timer: {
       isRunning: { type: Boolean, default: false },
       startTime: Date,
-      totalTime: { type: Number, default: 0 }, // in seconds
+      totalTime: { type: Number, default: 0 },
       sessions: [
         {
           startTime: Date,
           endTime: Date,
-          duration: Number, // in seconds
+          duration: Number,
         },
       ],
     },
@@ -87,7 +93,6 @@ const taskSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
-    completedAt: Date,
     isActive: {
       type: Boolean,
       default: true,
@@ -98,13 +103,22 @@ const taskSchema = new mongoose.Schema(
   }
 );
 
+// Auto-generate taskId before saving
+taskSchema.pre('save', async function(next) {
+  if (!this.taskId) {
+    const count = await mongoose.model('Task').countDocuments();
+    this.taskId = `TSK${String(count + 1).padStart(4, '0')}`;
+  }
+  next();
+});
+
 // Indexes
 taskSchema.index({ assignedTo: 1 });
 taskSchema.index({ project: 1 });
 taskSchema.index({ status: 1 });
 taskSchema.index({ dueDate: 1 });
 
-// Auto-update actualHours when timer stops
+// Stop timer method
 taskSchema.methods.stopTimer = function () {
   if (this.timer.isRunning && this.timer.startTime) {
     const endTime = new Date();
@@ -120,7 +134,6 @@ taskSchema.methods.stopTimer = function () {
     this.timer.isRunning = false;
     this.timer.startTime = null;
     
-    // Update actual hours
     this.actualHours = Math.round((this.timer.totalTime / 3600) * 100) / 100;
   }
 };
