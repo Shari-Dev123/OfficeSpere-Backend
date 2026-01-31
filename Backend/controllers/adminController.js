@@ -1028,25 +1028,56 @@ const getProjects = async (req, res) => {
 // ATTENDANCE
 // ============================================
 
+// ============================================
+// Admin Controller - getDailyAttendance Function
+// ===========================================  
+
+// @desc    Get daily attendance for admin dashboard & attendance monitor
+// @route   GET /api/admin/attendance
+// @access  Private/Admin
+// ============================================
+// Admin Controller - FIXED getDailyAttendance
+// Fixes: Timezone issue + Status matching
+// ============================================
+// @desc    Get daily attendance for admin dashboard & attendance monitor
+// @route   GET /api/admin/attendance
+// @access  Private/Admin
 const getDailyAttendance = async (req, res) => {
   try {
+    console.log('====================================');
+    console.log('📥 GET DAILY ATTENDANCE CALLED');
+    console.log('Query params:', req.query);
+    console.log('====================================');
+
     const { date } = req.query;
 
+    // ✅ FIX: Handle timezone properly
     let queryDate;
     if (date) {
-      queryDate = new Date(date);
+      // Parse the date string and create a new Date in UTC
+      const [year, month, day] = date.split('-').map(Number);
+      queryDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
     } else {
-      queryDate = new Date();
+      // Use today's date in UTC
+      const now = new Date();
+      queryDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0));
     }
 
-    queryDate.setHours(0, 0, 0, 0);
     const nextDay = new Date(queryDate);
-    nextDay.setDate(nextDay.getDate() + 1);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
 
+    console.log('📅 Query date (UTC):', queryDate.toISOString());
+    console.log('📅 Next day (UTC):', nextDay.toISOString());
+    console.log('📅 Original date param:', date);
+
+    // ✅ Get ALL active employees
     const allEmployees = await Employee.find({ isActive: true })
       .populate('userId', 'name email')
-      .select('name email employeeId designation');
+      .select('name email employeeId designation department');
 
+    console.log('👥 Total active employees:', allEmployees.length);
+
+    // ✅ Get attendance records for this date range
     const attendanceRecords = await Attendance.find({
       date: { $gte: queryDate, $lt: nextDay }
     }).populate({
@@ -1057,12 +1088,27 @@ const getDailyAttendance = async (req, res) => {
       }
     });
 
+    console.log('✅ Attendance records found:', attendanceRecords.length);
+    
+    // ✅ DEBUG: Log first attendance record
+    if (attendanceRecords.length > 0) {
+      console.log('📋 Sample attendance record:', {
+        employeeId: attendanceRecords[0].employeeId?._id,
+        status: attendanceRecords[0].status,
+        checkIn: attendanceRecords[0].checkInTime,
+        checkOut: attendanceRecords[0].checkOutTime,
+        date: attendanceRecords[0].date
+      });
+    }
+
+    // ✅ Map all employees with their attendance status
     const attendanceData = allEmployees.map(employee => {
       const record = attendanceRecords.find(
-        r => r.employeeId?._id?.toString() === employee._id.toString()
+        r => r.employeeId && r.employeeId._id.toString() === employee._id.toString()
       );
 
       if (record) {
+        // ✅ Employee has attendance record
         const checkIn = record.checkInTime;
         const checkOut = record.checkOutTime;
         let workHours = 0;
@@ -1072,54 +1118,118 @@ const getDailyAttendance = async (req, res) => {
           workHours = (diff / (1000 * 60 * 60)).toFixed(1);
         }
 
+        // ✅ FIX: Normalize status to lowercase for comparison
+        const normalizedStatus = (record.status || 'present').toLowerCase();
+        
+        // ✅ Determine final status
+        let finalStatus = normalizedStatus;
+        if (checkIn && !checkOut) {
+          finalStatus = 'present'; // Still checked in
+        } else if (!checkIn && !checkOut) {
+          finalStatus = 'absent';
+        }
+
+        console.log(`✅ Employee ${employee.email}: status="${record.status}" → normalized="${normalizedStatus}" → final="${finalStatus}"`);
+
         return {
+          _id: record._id,
           employeeName: employee.userId?.name || employee.name || 'Unknown',
           email: employee.userId?.email || employee.email || '-',
           employeeId: employee.employeeId,
           designation: employee.designation,
+          department: employee.department,
           checkIn: record.checkInTime,
+          checkInTime: record.checkInTime,
           checkOut: record.checkOutTime,
+          checkOutTime: record.checkOutTime,
           workHours: workHours,
-          status: record.status,
-          isLate: record.isLate || false
+          totalHours: workHours ? `${workHours}h` : '-',
+          status: finalStatus, // ✅ Use normalized status
+          isLate: record.isLate || false,
+          rawStatus: record.status // ✅ Keep original for debugging
         };
       } else {
+        // ✅ Employee has NO attendance record
         return {
+          _id: null,
           employeeName: employee.userId?.name || employee.name || 'Unknown',
           email: employee.userId?.email || employee.email || '-',
           employeeId: employee.employeeId,
           designation: employee.designation,
+          department: employee.department,
           checkIn: null,
+          checkInTime: null,
           checkOut: null,
+          checkOutTime: null,
           workHours: 0,
+          totalHours: '-',
           status: 'absent',
           isLate: false
         };
       }
     });
 
+    // ✅ Calculate statistics (case-insensitive)
     const stats = {
       total: attendanceData.length,
-      present: attendanceData.filter(a => a.status === 'present').length,
-      late: attendanceData.filter(a => a.status === 'late').length,
-      absent: attendanceData.filter(a => a.status === 'absent').length
+      present: attendanceData.filter(a => 
+        a.status && a.status.toLowerCase() === 'present'
+      ).length,
+      late: attendanceData.filter(a => 
+        a.status && a.status.toLowerCase() === 'late'
+      ).length,
+      absent: attendanceData.filter(a => 
+        a.status && a.status.toLowerCase() === 'absent'
+      ).length
     };
 
+    console.log('📊 Stats:', stats);
+    console.log('📋 Status breakdown:', attendanceData.map(a => ({
+      name: a.employeeName,
+      status: a.status,
+      hasCheckIn: !!a.checkIn
+    })));
+
+    // ✅ Sort: Present first, then late, then absent
+    const sortedData = attendanceData.sort((a, b) => {
+      const statusOrder = { present: 0, late: 1, absent: 2 };
+      const aOrder = statusOrder[a.status?.toLowerCase()] ?? 3;
+      const bOrder = statusOrder[b.status?.toLowerCase()] ?? 3;
+      
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      
+      // Same status - sort by check-in time
+      if (!a.checkIn) return 1;
+      if (!b.checkIn) return -1;
+      return new Date(a.checkIn) - new Date(b.checkIn);
+    });
+
+    console.log('====================================');
+    console.log('✅ Sending response with', sortedData.length, 'records');
+    console.log('====================================');
+
+    // ✅ Send response in multiple formats for compatibility
     res.status(200).json({
       success: true,
       date: queryDate,
       stats,
-      attendance: attendanceData.sort((a, b) => {
-        if (a.status === 'absent' && b.status !== 'absent') return 1;
-        if (a.status !== 'absent' && b.status === 'absent') return -1;
-        if (!a.checkIn) return 1;
-        if (!b.checkIn) return -1;
-        return new Date(a.checkIn) - new Date(b.checkIn);
-      })
+      data: {
+        attendance: sortedData,
+        stats: stats
+      },
+      attendance: sortedData,
+      message: 'Attendance data fetched successfully'
     });
 
   } catch (error) {
-    console.error('Get daily attendance error:', error);
+    console.error('====================================');
+    console.error('❌ GET DAILY ATTENDANCE ERROR');
+    console.error('====================================');
+    console.error('Error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('====================================');
+
     res.status(500).json({
       success: false,
       message: 'Error fetching attendance data',
@@ -1128,6 +1238,11 @@ const getDailyAttendance = async (req, res) => {
   }
 };
 
+
+
+module.exports = {
+  getDailyAttendance
+};
 // ============================================
 // EXPORTS
 // ============================================

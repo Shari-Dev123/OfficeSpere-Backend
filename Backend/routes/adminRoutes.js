@@ -1,4 +1,6 @@
 // routes/adminRoutes.js
+// ✅ FIXED VERSION - Proper route ordering to prevent conflicts
+
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/auth');
@@ -19,8 +21,9 @@ const {
   getProjects,
   getSettings,
   updateSettings,
-  getDailyAttendance  // ✅ MUST BE HERE
+  getDailyAttendance  // ✅ Import attendance function
 } = require('../controllers/adminController');
+
 const {
   getAdminNotifications,
   markAsRead,
@@ -30,7 +33,6 @@ const {
   deleteMany
 } = require('../controllers/notificationController.js');
 
-// ✅ Import from projectController
 const {
   getProject,
   createProject,
@@ -39,7 +41,6 @@ const {
   assignTeam
 } = require('../controllers/projectController');
 
-// ✅ Import from taskController
 const {
   getTasks,
   getTask,
@@ -55,29 +56,44 @@ router.use(protect);
 router.use(authorize('admin'));
 
 // ============================================
+// ⚠️ CRITICAL: SPECIFIC ROUTES BEFORE PARAMETERIZED ROUTES
+// ============================================
+
+// ============================================
 // DASHBOARD ROUTES
 // ============================================
 router.get('/dashboard', getDashboard);
 
 // ============================================
-// 🔔 NOTIFICATION ROUTES
+// 🔔 NOTIFICATION ROUTES (Specific routes first)
 // ============================================
+router.patch('/notifications/mark-all-read', markAllRead);  // ✅ Before :id routes
+router.post('/notifications/delete-many', deleteMany);      // ✅ Before :id routes
 router.get('/notifications', getAdminNotifications);
 router.patch('/notifications/:id/read', markAsRead);
 router.patch('/notifications/:id/unread', markAsUnread);
-router.patch('/notifications/mark-all-read', markAllRead);
 router.delete('/notifications/:id', deleteNotification);
-router.post('/notifications/delete-many', deleteMany);
 
 // ============================================
-// ATTENDANCE ROUTES - PLACE EARLY
+// ✅ ATTENDANCE ROUTE - Place BEFORE employees routes
+// This handles: GET /api/admin/attendance?date=2025-01-31
 // ============================================
 router.get('/attendance', (req, res, next) => {
-  console.log('🎯 ATTENDANCE ROUTE HIT!');
-  console.log('URL:', req.originalUrl);
-  console.log('Query:', req.query);
-  next();
-}, getDailyAttendance);
+  console.log('====================================');
+  console.log('🎯 ADMIN ATTENDANCE ROUTE HIT!');
+  console.log('Full URL:', req.originalUrl);
+  console.log('Query params:', req.query);
+  console.log('Method:', req.method);
+  console.log('====================================');
+  getDailyAttendance(req, res, next);
+});
+
+// ============================================
+// SETTINGS ROUTES (Specific routes before parameterized)
+// ============================================
+router.route('/settings')
+  .get(getSettings)
+  .put(updateSettings);
 
 // ============================================
 // EMPLOYEE ROUTES
@@ -129,11 +145,6 @@ router.route('/tasks/:id')
   .put(updateTask)
   .delete(deleteTask);
 
-// ============================================
-// SETTINGS ROUTES
-// ============================================
-router.route('/settings')
-  .get(getSettings)
-  .put(updateSettings);
+console.log('✅ Admin routes registered successfully');
 
 module.exports = router;

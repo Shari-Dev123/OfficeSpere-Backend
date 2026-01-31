@@ -155,6 +155,5 @@ module.exports = {
   authorize, 
   optionalAuth, 
   checkOwnership,
-  // Aliases for backward compatibility
   auth: protect
 };
