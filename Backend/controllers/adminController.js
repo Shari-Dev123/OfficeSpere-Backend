@@ -966,7 +966,7 @@ const updateSettings = async (req, res) => {
     console.error('❌ Error updating settings:', error);
     console.error('Error message:', error.message);
     console.error('====================================');
-    
+
     res.status(500).json({
       success: false,
       message: 'Failed to update settings',
@@ -1089,7 +1089,7 @@ const getDailyAttendance = async (req, res) => {
     });
 
     console.log('✅ Attendance records found:', attendanceRecords.length);
-    
+
     // ✅ DEBUG: Log first attendance record
     if (attendanceRecords.length > 0) {
       console.log('📋 Sample attendance record:', {
@@ -1120,7 +1120,7 @@ const getDailyAttendance = async (req, res) => {
 
         // ✅ FIX: Normalize status to lowercase for comparison
         const normalizedStatus = (record.status || 'present').toLowerCase();
-        
+
         // ✅ Determine final status
         let finalStatus = normalizedStatus;
         if (checkIn && !checkOut) {
@@ -1172,13 +1172,13 @@ const getDailyAttendance = async (req, res) => {
     // ✅ Calculate statistics (case-insensitive)
     const stats = {
       total: attendanceData.length,
-      present: attendanceData.filter(a => 
+      present: attendanceData.filter(a =>
         a.status && a.status.toLowerCase() === 'present'
       ).length,
-      late: attendanceData.filter(a => 
+      late: attendanceData.filter(a =>
         a.status && a.status.toLowerCase() === 'late'
       ).length,
-      absent: attendanceData.filter(a => 
+      absent: attendanceData.filter(a =>
         a.status && a.status.toLowerCase() === 'absent'
       ).length
     };
@@ -1195,9 +1195,9 @@ const getDailyAttendance = async (req, res) => {
       const statusOrder = { present: 0, late: 1, absent: 2 };
       const aOrder = statusOrder[a.status?.toLowerCase()] ?? 3;
       const bOrder = statusOrder[b.status?.toLowerCase()] ?? 3;
-      
+
       if (aOrder !== bOrder) return aOrder - bOrder;
-      
+
       // Same status - sort by check-in time
       if (!a.checkIn) return 1;
       if (!b.checkIn) return -1;
@@ -1209,15 +1209,12 @@ const getDailyAttendance = async (req, res) => {
     console.log('====================================');
 
     // ✅ Send response in multiple formats for compatibility
+    // ✅✅✅ CRITICAL FIX: Use SINGLE consistent structure
     res.status(200).json({
       success: true,
       date: queryDate,
-      stats,
-      data: {
-        attendance: sortedData,
-        stats: stats
-      },
-      attendance: sortedData,
+      stats: stats,
+      attendance: sortedData,  // ← AttendanceMonitor looks for this
       message: 'Attendance data fetched successfully'
     });
 

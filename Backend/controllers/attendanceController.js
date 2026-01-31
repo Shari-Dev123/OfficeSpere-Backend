@@ -163,12 +163,12 @@ exports.checkIn = async (req, res) => {
     console.log('====================================');
     console.log('req.user:', req.user);
     console.log('req.body:', req.body);
-    
+
     // ✅ FIX: Get employeeId from User's ID
     const userId = req.user._id || req.user.id;
-    
+
     console.log('👤 Looking for employee with userId:', userId);
-    
+
     // Find employee document by userId
     const employee = await Employee.findOne({ userId: userId })
       .populate('userId', 'name email');
@@ -191,9 +191,12 @@ exports.checkIn = async (req, res) => {
     const { location, notes, timestamp } = req.body;
 
     // ✅ Get today's date at midnight (local timezone)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const day = now.getDate();
+    const today = new Date(year, month, day, 0, 0, 0, 0);
+
     console.log('📅 Today date (start of day):', today);
 
     // ✅ Check if already checked in today
@@ -215,7 +218,7 @@ exports.checkIn = async (req, res) => {
 
     // ✅ Prepare check-in time
     const checkInTime = timestamp ? new Date(timestamp) : new Date();
-    
+
     console.log('⏰ Check-in time:', checkInTime);
 
     // ✅ Build attendance data object
@@ -295,7 +298,7 @@ exports.checkIn = async (req, res) => {
     console.error('Error:', error);
     console.error('Stack:', error.stack);
     console.error('====================================');
-    
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to check in',
@@ -317,7 +320,7 @@ exports.checkOut = async (req, res) => {
     console.log('req.body:', req.body);
 
     const userId = req.user._id || req.user.id;
-    
+
     const employee = await Employee.findOne({ userId: userId })
       .populate('userId', 'name email');
 
@@ -333,8 +336,11 @@ exports.checkOut = async (req, res) => {
     const { location, timestamp, totalSeconds, autoCheckout, reason } = req.body;
 
     // ✅ Get today's date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const day = now.getDate();
+    const today = new Date(year, month, day, 0, 0, 0, 0);
 
     console.log('📅 Looking for attendance on:', today);
 
@@ -436,7 +442,7 @@ exports.checkOut = async (req, res) => {
     console.error('Error:', error);
     console.error('Stack:', error.stack);
     console.error('====================================');
-    
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to check out'
@@ -523,7 +529,7 @@ exports.getAttendanceStatus = async (req, res) => {
     console.log('req.user:', req.user);
 
     const userId = req.user._id || req.user.id;
-    
+
     const employee = await Employee.findOne({ userId: userId });
 
     if (!employee) {
@@ -593,7 +599,7 @@ exports.getAttendanceStatus = async (req, res) => {
     console.error('====================================');
     console.error('Error:', error);
     console.error('====================================');
-    
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to get attendance status'
@@ -608,7 +614,7 @@ exports.getAttendanceStatus = async (req, res) => {
 exports.getAttendanceSummary = async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
-    
+
     const employee = await Employee.findOne({ userId: userId });
 
     if (!employee) {
@@ -626,7 +632,7 @@ exports.getAttendanceSummary = async (req, res) => {
 
     const startDate = new Date(targetYear, targetMonth, 1);
     startDate.setHours(0, 0, 0, 0);
-    
+
     const endDate = new Date(targetYear, targetMonth + 1, 0);
     endDate.setHours(23, 59, 59, 999);
 
@@ -670,7 +676,7 @@ exports.getAttendanceSummary = async (req, res) => {
 exports.requestCorrection = async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
-    
+
     const employee = await Employee.findOne({ userId: userId });
 
     if (!employee) {
@@ -730,7 +736,7 @@ exports.requestCorrection = async (req, res) => {
 exports.requestLeave = async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
-    
+
     const employee = await Employee.findOne({ userId: userId });
 
     if (!employee) {
