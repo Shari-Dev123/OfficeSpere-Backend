@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const clientController = require('../controllers/clientController');
+const notificationController = require('../controllers/notificationController'); // ✅ ADD THIS
 const { protect, authorize } = require('../middleware/auth');
 
 // Apply authentication and client role restriction to all routes
@@ -12,6 +13,13 @@ router.use(authorize('client'));
 // Dashboard Routes
 router.get('/dashboard', clientController.getDashboard);
 
+// ============ NOTIFICATION ROUTES ============ ✅ ADD THESE
+router.get('/notifications', notificationController.getClientNotifications);
+router.patch('/notifications/:id/read', notificationController.markAsRead);
+router.patch('/notifications/:id/unread', notificationController.markAsUnread);
+router.patch('/notifications/mark-all-read', notificationController.markAllRead);
+router.delete('/notifications/:id', notificationController.deleteNotification);
+
 // Project Routes
 router.get('/projects', clientController.getMyProjects);
 router.get('/projects/:id', clientController.getProject);
@@ -20,10 +28,10 @@ router.get('/projects/:id/timeline', clientController.getProjectTimeline);
 router.get('/projects/:id/milestones', clientController.getProjectMilestones);
 
 // ============ NEW ROUTES ============
-router.post('/projects', clientController.createProject); // Create new project
-router.put('/projects/:id', clientController.updateProject); // Update project
-router.delete('/projects/:id', clientController.deleteProject); // Delete project
-router.post('/projects/send-to-admin', clientController.sendProjectToAdmin); // Send project to admin
+router.post('/projects', clientController.createProject);
+router.put('/projects/:id', clientController.updateProject);
+router.delete('/projects/:id', clientController.deleteProject);
+router.post('/projects/send-to-admin', clientController.sendProjectToAdmin);
 
 // Meeting Routes
 router.get('/meetings', clientController.getMyMeetings);
