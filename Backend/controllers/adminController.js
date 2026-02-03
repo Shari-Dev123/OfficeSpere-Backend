@@ -1,7 +1,3 @@
-// ============================================
-// Admin Controller
-// Handles all admin-related operations
-// ============================================
 
 const User = require("../models/User");
 const Employee = require("../models/Employee");
@@ -14,13 +10,7 @@ const DailyReport = require("../models/DailyReport");
 const Admin = require('../models/Admin'); // ✅ ADD THIS
 const { getIO } = require('../config/socket');
 
-// ============================================
-// DASHBOARD
-// ============================================
 
-// @desc    Get admin dashboard statistics
-// @route   GET /api/admin/dashboard
-// @access  Private/Admin
 const getDashboard = async (req, res) => {
   try {
     // Get total employees

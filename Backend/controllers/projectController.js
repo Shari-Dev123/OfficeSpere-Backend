@@ -14,6 +14,21 @@ const {
   notifyProjectCompleted
 } = require('../utils/Notificationhelper.js');
 
+// ✅ Helper function to generate unique projectId
+const generateProjectId = async () => {
+  const prefix = 'PROJ';
+  const randomNum = Math.floor(100000 + Math.random() * 900000);
+  const projectId = `${prefix}-${randomNum}`;
+  
+  // Check if already exists
+  const exists = await Project.findOne({ projectId });
+  if (exists) {
+    return generateProjectId(); // Recursively try again
+  }
+  
+  return projectId;
+};
+
 // @desc    Get all projects
 // @route   GET /api/admin/projects
 // @access  Private/Admin
@@ -43,14 +58,14 @@ exports.getProjects = async (req, res) => {
     const projects = await Project.find(query)
       .populate('client', 'name companyName email')
       .populate({
-        path: 'team',
-        select: 'name email department designation',
-        match: { isActive: true } // only active employees
+        path: 'projectManager',
+        select: 'name email userId',
+        populate: { path: 'userId', select: 'name email' }
       })
       .populate({
-        path: 'client',
-        select: 'name companyName email',
-        match: { isActive: true } // only active clients
+        path: 'team.employee',
+        select: 'name email userId',
+        populate: { path: 'userId', select: 'name email' }
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -81,8 +96,16 @@ exports.getProject = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id)
       .populate('client', 'name companyName email phone')
-      .populate('team', 'name email department designation')
-      .populate('createdBy', 'name email');
+      .populate({
+        path: 'projectManager',
+        select: 'name email userId',
+        populate: { path: 'userId', select: 'name email' }
+      })
+      .populate({
+        path: 'team.employee',
+        select: 'name email userId',
+        populate: { path: 'userId', select: 'name email' }
+      });
 
     if (!project) {
       return res.status(404).json({
@@ -132,25 +155,23 @@ exports.createProject = async (req, res) => {
       name,
       description,
       client,
+      projectManager,
       startDate,
       endDate,
       budget,
-      team,
       status,
-      priority
+      priority,
+      tags
     } = req.body;
+
+    console.log('📝 Creating project with data:', req.body);
+
+    // ✅ Generate unique projectId
+    const projectId = await generateProjectId();
+    console.log('🔑 Generated projectId:', projectId);
 
     // Verify client exists
     const clientExists = await Client.findById(client);
-    await notifyProjectCreated({
-      projectId: project._id,
-      name: project.name,
-      clientId: project.client?._id,
-      clientName: project.client?.companyName,
-      status: project.status,
-      startDate: project.startDate
-    });
-
     if (!clientExists) {
       return res.status(404).json({
         success: false,
@@ -158,35 +179,101 @@ exports.createProject = async (req, res) => {
       });
     }
 
-    // Verify team members exist (if provided)
-    if (team && team.length > 0) {
-      const teamMembers = await Employee.find({ _id: { $in: team } });
-      if (teamMembers.length !== team.length) {
-        return res.status(400).json({
+    // Verify project manager exists (if provided)
+    if (projectManager) {
+      const pmExists = await Employee.findById(projectManager);
+      if (!pmExists) {
+        return res.status(404).json({
           success: false,
-          message: 'One or more team members not found'
+          message: 'Project manager not found'
         });
       }
     }
 
-    // Create project
+    // ✅ Create project with generated projectId
     const project = await Project.create({
+      projectId, // ✅ Include generated ID
       name,
       description,
       client,
+      projectManager,
       startDate,
       endDate,
       budget,
-      team: team || [],
-      status: status || 'planning',
-      priority: priority || 'medium',
-      createdBy: req.user.id
+      status: status || 'Planning',
+      priority: priority || 'Medium',
+      tags: tags || [],
+      progress: 0,
+      spent: 0
     });
 
+    console.log('✅ Project created:', project._id);
+
     // Populate project data
-    await project.populate('client', 'name companyName email');
-    await project.populate('team', 'name email department');
-    await project.populate('createdBy', 'name email');
+    await project.populate([
+      { path: 'client', select: 'name companyName email' },
+      { 
+        path: 'projectManager', 
+        select: 'name email userId',
+        populate: { path: 'userId', select: 'name email' }
+      }
+    ]);
+
+    // ✅ Send notifications
+    try {
+      await notifyProjectCreated({
+        projectId: project._id,
+        name: project.name,
+        clientId: project.client?._id,
+        clientName: project.client?.companyName || project.client?.name,
+        status: project.status,
+        startDate: project.startDate
+      });
+      console.log('📧 Notification sent');
+    } catch (notifError) {
+      console.error('Notification error:', notifError);
+    }
+
+    // ✅ EMIT SOCKET EVENTS
+    try {
+      const io = getIO();
+      
+      // Notify project manager
+      if (project.projectManager) {
+        io.to(`employee-${project.projectManager._id}`).emit('project-assigned', {
+          project: {
+            _id: project._id,
+            projectId: project.projectId,
+            name: project.name,
+            description: project.description,
+            startDate: project.startDate,
+            endDate: project.endDate,
+            status: project.status
+          }
+        });
+      }
+
+      // Notify client
+      if (project.client) {
+        io.to(`client-${project.client._id}`).emit('project-created', {
+          project: {
+            _id: project._id,
+            projectId: project.projectId,
+            name: project.name,
+            description: project.description,
+            startDate: project.startDate,
+            endDate: project.endDate
+          }
+        });
+      }
+
+      // Notify all admins
+      io.to('admin').emit('project-created', { project });
+      
+      console.log('📡 Project creation events emitted');
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
 
     res.status(201).json({
       success: true,
@@ -206,9 +293,6 @@ exports.createProject = async (req, res) => {
 // @desc    Update project
 // @route   PUT /api/admin/projects/:id
 // @access  Private/Admin
-// @desc    Update project
-// @route   PUT /api/admin/projects/:id
-// @access  Private/Admin
 exports.updateProject = async (req, res) => {
   try {
     console.log('====================================');
@@ -218,13 +302,7 @@ exports.updateProject = async (req, res) => {
     console.log('📊 Update data:', req.body);
     
     let project = await Project.findById(req.params.id);
-    await notifyProjectUpdated({
-      projectId: project._id,
-      name: project.name,
-      clientId: project.client?._id,
-      status: project.status,
-      changes: Object.keys(req.body)
-    });
+
     if (!project) {
       console.log('❌ Project not found');
       return res.status(404).json({
@@ -242,7 +320,8 @@ exports.updateProject = async (req, res) => {
       'budget',
       'status',
       'priority',
-      'team'
+      'projectManager',
+      'tags'
     ];
 
     allowedFields.forEach(field => {
@@ -252,23 +331,73 @@ exports.updateProject = async (req, res) => {
     });
 
     // Update timestamps
-    if (req.body.status === 'in-progress' && !project.actualStartDate) {
+    if (req.body.status === 'In Progress' && !project.actualStartDate) {
       project.actualStartDate = new Date();
     }
 
-    if (req.body.status === 'completed' && !project.actualEndDate) {
+    if (req.body.status === 'Completed' && !project.actualEndDate) {
       project.actualEndDate = new Date();
     }
 
     await project.save();
     console.log('✅ Project saved');
 
-    // ✅ CRITICAL FIX: Only populate fields that exist in schema
+    // Populate updated project
     const updatedProject = await Project.findById(project._id)
-      .populate('client', 'companyName email contactPerson')
-      .populate('team', 'name email designation');
+      .populate('client', 'name companyName email')
+      .populate({
+        path: 'projectManager',
+        select: 'name email userId',
+        populate: { path: 'userId', select: 'name email' }
+      });
     
     console.log('✅ Project populated');
+
+    // ✅ Send notifications
+    try {
+      await notifyProjectUpdated({
+        projectId: updatedProject._id,
+        name: updatedProject.name,
+        clientId: updatedProject.client?._id,
+        status: updatedProject.status,
+        changes: Object.keys(req.body)
+      });
+    } catch (notifError) {
+      console.error('Notification error:', notifError);
+    }
+
+    // ✅ EMIT SOCKET EVENTS
+    try {
+      const io = getIO();
+      
+      // Notify project manager
+      if (updatedProject.projectManager) {
+        io.to(`employee-${updatedProject.projectManager._id}`).emit('project-updated', {
+          project: {
+            _id: updatedProject._id,
+            projectId: updatedProject.projectId,
+            name: updatedProject.name,
+            status: updatedProject.status,
+            endDate: updatedProject.endDate
+          }
+        });
+      }
+
+      // Notify client
+      if (updatedProject.client) {
+        io.to(`client-${updatedProject.client._id}`).emit('project-updated', {
+          project: updatedProject
+        });
+      }
+
+      // Notify admins
+      io.to('admin').emit('project-updated', { project: updatedProject });
+      
+      console.log('📡 Project update events emitted');
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
     console.log('====================================');
 
     res.status(200).json({
@@ -289,6 +418,7 @@ exports.updateProject = async (req, res) => {
     });
   }
 };
+
 // @desc    Delete project
 // @route   DELETE /api/admin/projects/:id
 // @access  Private/Admin
@@ -356,11 +486,20 @@ exports.assignTeam = async (req, res) => {
     }
 
     // Update team
-    project.team = teamMembers;
+    project.team = teamMembers.map(empId => ({
+      employee: empId,
+      role: 'Developer', // Default role
+      assignedAt: new Date()
+    }));
+    
     await project.save();
 
     // Populate team data
-    await project.populate('team', 'name email department designation');
+    await project.populate({
+      path: 'team.employee',
+      select: 'name email userId',
+      populate: { path: 'userId', select: 'name email' }
+    });
 
     res.status(200).json({
       success: true,
@@ -468,7 +607,7 @@ exports.getProjectStats = async (req, res) => {
     const daysRemaining = Math.ceil((project.endDate - now) / (1000 * 60 * 60 * 24));
 
     // Budget tracking
-    const budgetUsed = 0; // You would calculate this from time tracking or expenses
+    const budgetUsed = project.spent || 0;
     const budgetProgress = project.budget > 0 ? Math.round((budgetUsed / project.budget) * 100) : 0;
 
     res.status(200).json({
@@ -498,7 +637,7 @@ exports.getProjectStats = async (req, res) => {
           remaining: project.budget - budgetUsed
         },
         team: {
-          size: project.team.length
+          size: project.team?.length || 0
         }
       }
     });
@@ -507,189 +646,6 @@ exports.getProjectStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching project statistics',
-      error: error.message
-    });
-  }
-};
-
-exports.createProject = async (req, res) => {
-  try {
-    const {
-      name,
-      description,
-      client,
-      startDate,
-      endDate,
-      budget,
-      team,
-      status,
-      priority
-    } = req.body;
-
-    // ... your existing validation code ...
-
-    // Create project
-    const project = await Project.create({
-      name,
-      description,
-      client,
-      startDate,
-      endDate,
-      budget,
-      team: team || [],
-      status: status || 'planning',
-      priority: priority || 'medium',
-      createdBy: req.user.id
-    });
-    
-    // Populate project data
-    await project.populate('client', 'name companyName email');
-    await project.populate('team', 'name email department');
-    await project.populate('createdBy', 'name email');
-
-    // ✅ EMIT SOCKET EVENTS
-    try {
-      const io = getIO();
-      
-      // Notify assigned employees
-      if (project.team && project.team.length > 0) {
-        project.team.forEach(employee => {
-          io.to(`employee-${employee._id}`).emit('project-assigned', {
-            project: {
-              _id: project._id,
-              name: project.name,
-              description: project.description,
-              startDate: project.startDate,
-              endDate: project.endDate,
-              status: project.status
-            }
-          });
-        });
-      }
-
-      // Notify client
-      if (project.client) {
-        io.to(`client-${project.client._id}`).emit('project-created', {
-          project: {
-            _id: project._id,
-            name: project.name,
-            description: project.description,
-            startDate: project.startDate,
-            endDate: project.endDate
-          }
-        });
-      }
-
-      // Notify all admins
-      io.to('admin').emit('project-created', { project });
-      
-      console.log('📡 Project creation events emitted');
-    } catch (socketError) {
-      console.error('Socket emit error:', socketError);
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Project created successfully',
-      data: project
-    });
-  } catch (error) {
-    console.error('Create project error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating project',
-      error: error.message
-    });
-  }
-};
-
-exports.updateProject = async (req, res) => {
-  try {
-    let project = await Project.findById(req.params.id);
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found'
-      });
-    }
-
-    // Update fields
-    const allowedFields = [
-      'name',
-      'description',
-      'startDate',
-      'endDate',
-      'budget',
-      'status',
-      'priority',
-      'team'
-    ];
-
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        project[field] = req.body[field];
-      }
-    });
-
-    // Update timestamps
-    if (req.body.status === 'in-progress' && !project.actualStartDate) {
-      project.actualStartDate = new Date();
-    }
-
-    if (req.body.status === 'completed' && !project.actualEndDate) {
-      project.actualEndDate = new Date();
-    }
-
-    await project.save();
-
-    const updatedProject = await Project.findById(project._id)
-      .populate('client', 'companyName email contactPerson')
-      .populate('team', 'name email designation');
-
-    // ✅ EMIT SOCKET EVENTS
-    try {
-      const io = getIO();
-      
-      // Notify employees
-      if (updatedProject.team) {
-        updatedProject.team.forEach(employee => {
-          io.to(`employee-${employee._id}`).emit('project-updated', {
-            project: {
-              _id: updatedProject._id,
-              name: updatedProject.name,
-              status: updatedProject.status,
-              endDate: updatedProject.endDate
-            }
-          });
-        });
-      }
-
-      // Notify client
-      if (updatedProject.client) {
-        io.to(`client-${updatedProject.client._id}`).emit('project-updated', {
-          project: updatedProject
-        });
-      }
-
-      // Notify admins
-      io.to('admin').emit('project-updated', { project: updatedProject });
-      
-      console.log('📡 Project update events emitted');
-    } catch (socketError) {
-      console.error('Socket emit error:', socketError);
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Project updated successfully',
-      data: updatedProject
-    });
-  } catch (error) {
-    console.error('Update project error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating project',
       error: error.message
     });
   }

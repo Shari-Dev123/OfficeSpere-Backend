@@ -1,5 +1,4 @@
-// server.js
-// Main server file - OfficeSphere Backend (WITH SOCKET.IO)
+
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
@@ -15,21 +14,12 @@ dotenv.config();
 // Connect to MongoDB
 connectDB();
 
-// Initialize Express app
-const app = express();
 
-// CREATE HTTP SERVER
+const app = express();
 const server = http.createServer(app);
 
-// INITIALIZE SOCKET.IO
-const io = initializeSocket(server);
 
-// MAKE IO ACCESSIBLE IN ROUTES
-app.set('io', io);
-
-// ==========================================
-// MIDDLEWARE
-// ==========================================
+initializeSocket(server);
 
 // Body parser middleware
 app.use(express.json());
@@ -52,9 +42,6 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// ==========================================
-// ROUTES
-// ==========================================
 
 // Import routes
 const adminRoutes = require('./Routes/adminRoutes');

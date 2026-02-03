@@ -3,10 +3,10 @@
 // REPORT ROUTES - FULLY ALIGNED WITH FRONTEND
 // ============================================
 
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { protect, authorize } = require('../middleware/auth');
-const reportController = require('../controllers/reportController');
+const { protect, authorize } = require("../middleware/auth");
+const reportController = require("../controllers/reportController");
 
 // ============================================
 // ADMIN REPORT ROUTES
@@ -15,48 +15,55 @@ const reportController = require('../controllers/reportController');
 
 // Frontend: adminAPI.generateReport() → POST /api/reports/admin/generate
 router.post(
-  '/admin/generate',
+  "/admin/generate",
   protect,
-  authorize('admin'),
-  reportController.generateReport
+  authorize("admin"),
+  reportController.generateReport,
 );
 
 // Frontend: adminAPI.getPerformanceReport() → GET /api/reports/admin/performance
 router.get(
-  '/admin/performance',
+  "/admin/performance",
   protect,
-  authorize('admin'),
-  reportController.getPerformanceReport
+  authorize("admin"),
+  reportController.getPerformanceReport,
 );
 
 // Frontend: adminAPI.getProductivityReport() → GET /api/reports/admin/productivity
 router.get(
-  '/admin/productivity',
+  "/admin/productivity",
   protect,
-  authorize('admin'),
-  reportController.getProductivityReport
+  authorize("admin"),
+  reportController.getProductivityReport,
 );
 
 router.get(
-  '/admin/employee',
+  "/admin/employee",
   protect,
-  authorize('admin'),
-  reportController.getProductivityReport
+  authorize("admin"),
+  reportController.getProductivityReport,
 );
 // Frontend: adminAPI.getAttendanceReportData() → GET /api/reports/admin/attendance
 router.get(
-  '/admin/attendance',
+  "/admin/attendance",
   protect,
-  authorize('admin'),
-  reportController.getAttendanceReport
+  authorize("admin"),
+  reportController.getAttendanceReport,
 );
 
 // Frontend: adminAPI.exportReport(type) → GET /api/reports/admin/:reportType/export
 router.get(
-  '/admin/:reportType/export',
+  "/admin/:reportType/export",
   protect,
-  authorize('admin'),
-  reportController.exportReport
+  authorize("admin"),
+  reportController.exportReport,
+);
+
+router.get(
+  "/admin/daily",
+  protect,
+  authorize("admin"),
+  reportController.getDailyReport,
 );
 
 // ============================================
@@ -66,26 +73,26 @@ router.get(
 
 // Frontend: clientAPI.getProjectReports(id) → GET /api/reports/client/projects/:projectId
 router.get(
-  '/client/projects/:projectId',
+  "/client/projects/:projectId",
   protect,
-  authorize('client'),
-  reportController.getProjectReports
+  authorize("client"),
+  reportController.getProjectReports,
 );
 
 // Frontend: clientAPI.getWeeklyReport(id) → GET /api/reports/client/projects/:projectId/weekly
 router.get(
-  '/client/projects/:projectId/weekly',
+  "/client/projects/:projectId/weekly",
   protect,
-  authorize('client'),
-  reportController.getWeeklyReport
+  authorize("client"),
+  reportController.getWeeklyReport,
 );
 
 // Frontend: clientAPI.downloadReport(id) → GET /api/reports/client/:reportId/download
 router.get(
-  '/client/:reportId/download',
+  "/client/:reportId/download",
   protect,
-  authorize('client'),
-  reportController.downloadReport
+  authorize("client"),
+  reportController.downloadReport,
 );
 
 module.exports = router;
