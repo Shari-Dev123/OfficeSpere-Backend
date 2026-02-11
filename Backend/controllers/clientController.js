@@ -1,371 +1,51 @@
-// controllers/clientController.js
+// ============================================
+// CLIENT CONTROLLER - COMPLETE & FIXED VERSION
+// No Duplicates, All Functions Included
+// ============================================
 
 const Client = require('../models/Client');
 const Project = require('../models/Project');
 const Meeting = require('../models/Meeting');
 const DailyReport = require('../models/DailyReport');
+const { getIO } = require('../config/socket');
 const {
   notifyClientRegistered,
-  notifyClientFeedback
+  notifyClientFeedback,
+  notifyProjectCreated
 } = require('../utils/Notificationhelper');
 
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+// ✅ Generate unique project ID
+const generateProjectId = async () => {
+  const prefix = 'PROJ';
+  const randomNum = Math.floor(100000 + Math.random() * 900000);
+  const projectId = `${prefix}-${randomNum}`;
+  
+  const exists = await Project.findOne({ projectId });
+  if (exists) {
+    return generateProjectId();
+  }
+  
+  return projectId;
+};
+
+// ============================================
+// DASHBOARD
+// ============================================
+
 // @desc    Get client dashboard data
 // @route   GET /api/client/dashboard
 // @access  Private (Client only)
-// @desc    Get client dashboard data
-// @route   GET /api/client/dashboard
-// @access  Private (Client only)
-// Add these functions to your clientController.js file
-// Place them after the getMyProjects function
-
-// @desc    Create a new project
-// @route   POST /api/client/projects
-// @access  Private (Client only)
-exports.createProject = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const {
-      name,
-      description,
-      startDate,
-      deadline,
-      budget,
-      requirements,
-      priority,
-      status,
-      category
-    } = req.body;
-
-    console.log('📝 Creating project for user:', userId);
-    console.log('Project data:', req.body);
-
-    // Validation
-    if (!name || !description || !startDate || !deadline) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide name, description, start date, and deadline'
-      });
-    }
-
-    // Find client by userId
-    const Client = require('../models/Client');
-    const client = await Client.findOne({ userId: userId });
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client profile not found. Please complete your profile first.'
-      });
-    }
-
-    console.log('✅ Client found:', client._id);
-
-    // Generate unique project ID
-    const Project = require('../models/Project');
-    const projectCount = await Project.countDocuments();
-    const projectId = `PRJ${String(projectCount + 1).padStart(4, '0')}`;
-
-    const normalizedPriority =
-      priority === 'Critical' ? 'Urgent' : priority || 'Medium';
-
-    // For now, we'll create project without projectManager
-    // Admin can assign project manager later
-    const projectData = {
-      projectId: projectId,
-      name: name,
-      description: description,
-      client: client._id,
-      // We'll set a default/placeholder project manager or make it optional
-      projectManager: null, // Admin will assign later
-      status: status || 'Planning',
-      priority: priority || 'Medium',
-      startDate: startDate,
-      endDate: deadline,
-      budget: Number(budget) || 0,
-      spent: 0,
-      progress: 0,
-      tags: category ? [category] : [],
-      isActive: true
-    };
-
-    console.log('Creating project with data:', projectData);
-
-    const project = await Project.create(projectData);
-
-    console.log('✅ Project created successfully:', project._id);
-
-    // Populate client info for response
-    const populatedProject = await Project.findById(project._id)
-      .populate('client', 'companyName contactPerson email')
-      .lean();
-
-    res.status(201).json({
-      success: true,
-      message: 'Project created successfully! Admin will assign a project manager soon.',
-      data: populatedProject
-    });
-
-  } catch (error) {
-    console.error('❌ Create project error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create project',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Update a project
-// @route   PUT /api/client/projects/:id
-// @access  Private (Client only)
-exports.updateProject = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const updateData = req.body;
-
-    console.log('📝 Updating project:', id);
-
-    // Find client by userId
-    const Client = require('../models/Client');
-    const client = await Client.findOne({ userId: userId });
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client profile not found'
-      });
-    }
-
-    // Find project and verify ownership
-    const Project = require('../models/Project');
-    const project = await Project.findOne({ _id: id, client: client._id });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    // Update allowed fields
-    const allowedFields = ['name', 'description', 'budget', 'priority', 'endDate'];
-    allowedFields.forEach(field => {
-      if (updateData[field] !== undefined) {
-        project[field] = updateData[field];
-      }
-    });
-
-    // Update deadline if provided
-    if (updateData.deadline) {
-      project.endDate = updateData.deadline;
-    }
-
-    // Update tags if category provided
-    if (updateData.category) {
-      project.tags = [updateData.category];
-    }
-
-    await project.save();
-
-    const updatedProject = await Project.findById(project._id)
-      .populate('client', 'companyName contactPerson email')
-      .lean();
-
-    console.log('✅ Project updated successfully');
-
-    res.status(200).json({
-      success: true,
-      message: 'Project updated successfully',
-      data: updatedProject
-    });
-
-  } catch (error) {
-    console.error('❌ Update project error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update project',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Delete a project
-// @route   DELETE /api/client/projects/:id
-// @access  Private (Client only)
-exports.deleteProject = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-
-    console.log('🗑️ Deleting project:', id);
-
-    // Find client by userId
-    const Client = require('../models/Client');
-    const client = await Client.findOne({ userId: userId });
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client profile not found'
-      });
-    }
-
-    // Find project and verify ownership
-    const Project = require('../models/Project');
-    const project = await Project.findOne({ _id: id, client: client._id });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    // Check if project can be deleted (only Planning or On Hold projects)
-    if (project.status === 'In Progress' || project.status === 'Completed') {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot delete project with status: ${project.status}`
-      });
-    }
-
-    // Soft delete by setting isActive to false
-    project.isActive = false;
-    await project.save();
-
-    // Or hard delete (uncomment if you prefer)
-    // await Project.findByIdAndDelete(id);
-
-    console.log('✅ Project deleted successfully');
-
-    res.status(200).json({
-      success: true,
-      message: 'Project deleted successfully'
-    });
-
-  } catch (error) {
-    console.error('❌ Delete project error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete project',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Send project to admin for review/approval
-// @route   POST /api/client/projects/send-to-admin
-// @access  Private (Client only)
-exports.sendProjectToAdmin = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const {
-      projectId,
-      projectName,
-      message,
-      urgency,
-      requestType,
-      clientInfo
-    } = req.body;
-
-    console.log('📨 Sending project to admin');
-    console.log('Request data:', req.body);
-
-    // Validation
-    if (!projectId || !message) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide project ID and message'
-      });
-    }
-
-    // Find client
-    const Client = require('../models/Client');
-    const client = await Client.findOne({ userId: userId })
-      .populate('userId', 'name email');
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client profile not found'
-      });
-    }
-
-    // Verify project belongs to client
-    const Project = require('../models/Project');
-    const project = await Project.findOne({ _id: projectId, client: client._id });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    // Create notification/request for admin
-    // You can either:
-    // 1. Create a Notification model (recommended)
-    // 2. Send email to admin
-    // 3. Store in project comments/notes
-    // 4. Use a dedicated AdminRequest model
-
-    // For now, we'll add to project notes/comments
-    if (!project.adminRequests) {
-      project.adminRequests = [];
-    }
-
-    const adminRequest = {
-      requestType: requestType || 'Review',
-      urgency: urgency || 'Normal',
-      message: message,
-      requestedBy: {
-        name: client.userId?.name || client.contactPerson?.name,
-        email: client.userId?.email || client.contactPerson?.email
-      },
-      requestedAt: new Date(),
-      status: 'Pending'
-    };
-
-    // Add to project (you may need to add this field to schema)
-    // For now, we'll just log it and send success response
-
-    console.log('Admin Request:', adminRequest);
-    console.log('✅ Request prepared for admin');
-
-    // In production, you would:
-    // 1. Save to a notifications collection
-    // 2. Send email to admin
-    // 3. Create a task for admin dashboard
-
-    res.status(200).json({
-      success: true,
-      message: 'Project request sent to admin successfully. You will be notified once admin reviews it.',
-      data: {
-        projectId: project._id,
-        projectName: project.name,
-        requestType: adminRequest.requestType,
-        urgency: adminRequest.urgency,
-        status: 'Pending Review'
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Send to admin error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send request to admin',
-      error: error.message
-    });
-  }
-};
 exports.getDashboard = async (req, res) => {
   try {
-    const userId = req.user.id; // This is the USER ID from JWT
+    const userId = req.user.id;
 
     console.log('📊 Fetching dashboard for user ID:', userId);
 
-    // 1. First, find the client using userId
+    // 1. Find the client using userId
     const client = await Client.findOne({ userId: userId });
 
     if (!client) {
@@ -378,7 +58,7 @@ exports.getDashboard = async (req, res) => {
 
     console.log('✅ Client found:', client.clientId);
 
-    // 2. Now get projects using client._id (ObjectId)
+    // 2. Get projects using client._id
     const projects = await Project.find({ client: client._id })
       .select('name status startDate endDate budget progress')
       .lean();
@@ -395,13 +75,14 @@ exports.getDashboard = async (req, res) => {
     const pendingProjects = projects.filter(p =>
       ['Planning', 'Pending', 'planning'].includes(p.status)
     ).length;
-    // Get upcoming meetings - use client._id
+
+    // Get upcoming meetings
     const upcomingMeetings = await Meeting.find({
-      participants: client._id,
-      scheduledAt: { $gte: new Date() }, // Changed from meetingDate to scheduledAt
+      'participants.user': userId,
+      startTime: { $gte: new Date() },
       status: { $ne: 'cancelled' }
     })
-      .sort({ scheduledAt: 1 }) // Changed from meetingDate
+      .sort({ startTime: 1 })
       .limit(5)
       .populate('organizer', 'name email')
       .populate('project', 'name')
@@ -415,16 +96,6 @@ exports.getDashboard = async (req, res) => {
       ? projects.reduce((sum, p) => sum + (p.progress || 0), 0) / projects.length
       : 0;
 
-    // Get recent feedback - use client._id
-    const recentFeedback = await Project.find({
-      client: client._id,
-      'feedback.0': { $exists: true }
-    })
-      .select('name feedback')
-      .sort({ 'feedback.createdAt': -1 }) // Changed from submittedAt to createdAt
-      .limit(3)
-      .lean();
-
     // Prepare dashboard data
     const dashboardData = {
       stats: {
@@ -434,7 +105,7 @@ exports.getDashboard = async (req, res) => {
         pendingProjects,
         totalInvestment: totalInvestment.toFixed(2),
         averageProgress: Math.round(averageProgress),
-        pendingApprovals: 0, // You can calculate this if you have approval system
+        pendingApprovals: 0,
         upcomingMeetings: upcomingMeetings.length
       },
       recentProjects: projects.slice(0, 5).map(p => ({
@@ -480,53 +151,73 @@ exports.getDashboard = async (req, res) => {
   }
 };
 
+// ============================================
+// PROJECT MANAGEMENT
+// ============================================
+
 // @desc    Get all client's projects
 // @route   GET /api/client/projects
 // @access  Private (Client only)
 exports.getMyProjects = async (req, res) => {
   try {
     const userId = req.user.id;
-    const client = await Client.findOne({ userId });
-
+    console.log('📊 Fetching projects for user:', userId);
+    
+    // Find the client document using userId
+    const client = await Client.findOne({ userId: userId });
+    
     if (!client) {
+      console.log('❌ Client not found for userId:', userId);
       return res.status(404).json({
         success: false,
         message: 'Client profile not found'
       });
     }
-
+    
+    console.log('✅ Client found:', client.clientId, client._id);
+    
     const { status, search, sortBy = 'createdAt', order = 'desc' } = req.query;
-
-    // Build query
-    const query = { client: client._id };
-
-    if (status) {
+    
+    // Build query using client._id
+    const query = { 
+      client: client._id,
+      isActive: true 
+    };
+    
+    if (status && status !== 'all') {
       query.status = status;
     }
-
+    
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } }
       ];
     }
-
+    
+    console.log('🔍 Project query:', query);
+    
     // Sort options
     const sortOptions = {};
     sortOptions[sortBy] = order === 'asc' ? 1 : -1;
-
+    
     const projects = await Project.find(query)
-      .populate('assignedTeam', 'name email role')
+      .populate('projectManager', 'name email')
+      .populate('team.employee', 'name email')
+      .populate('files.uploadedBy', 'name email')
+      .populate('feedback.submittedBy', 'name email')
       .sort(sortOptions)
       .lean();
-
+    
+    console.log(`✅ Found ${projects.length} projects for client`);
+    
     res.status(200).json({
       success: true,
       count: projects.length,
       data: projects
     });
   } catch (error) {
-    console.error('Get client projects error:', error);
+    console.error('❌ Get client projects error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch projects',
@@ -540,12 +231,27 @@ exports.getMyProjects = async (req, res) => {
 // @access  Private (Client only)
 exports.getProject = async (req, res) => {
   try {
+    const userId = req.user.id;
     const { id } = req.params;
-    const clientId = req.user.id;
 
-    const project = await Project.findOne({ _id: id, client: clientId })
-      .populate('assignedTeam', 'name email role avatar')
-      .populate('client', 'companyName contactPerson email')
+    // Find client
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client profile not found'
+      });
+    }
+
+    const project = await Project.findOne({ 
+      _id: id, 
+      client: client._id 
+    })
+      .populate('projectManager', 'name email')
+      .populate('team.employee', 'name email')
+      .populate('files.uploadedBy', 'name email')
+      .populate('feedback.submittedBy', 'name email')
+      .populate('feedback.respondedBy', 'name email')
       .lean();
 
     if (!project) {
@@ -569,18 +275,166 @@ exports.getProject = async (req, res) => {
   }
 };
 
-// @desc    Get project progress
-// @route   GET /api/client/projects/:id/progress
+// @desc    Create new project (WITH FILES)
+// @route   POST /api/client/projects
 // @access  Private (Client only)
-exports.getProjectProgress = async (req, res) => {
+exports.createProject = async (req, res) => {
+  try {
+    const {
+      name,
+      description,
+      startDate,
+      endDate,
+      budget,
+      priority,
+      tags,
+      requirements
+    } = req.body;
+
+    console.log('📝 Client creating project:', req.body);
+
+    const userId = req.user.id;
+
+    // Find client
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    // Validation
+    if (!name || !description || !startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide name, description, start date, and end date'
+      });
+    }
+
+    // Generate unique projectId
+    const projectId = await generateProjectId();
+    console.log('🔑 Generated projectId:', projectId);
+
+    // ✅ Handle file uploads
+    let uploadedFiles = [];
+    if (req.files && req.files.length > 0) {
+      uploadedFiles = req.files.map(file => ({
+        name: file.originalname,
+        url: `/uploads/projects/${file.filename}`,
+        uploadedBy: req.user.id,
+        uploadedAt: new Date()
+      }));
+      console.log('📎 Files uploaded by client:', uploadedFiles.length);
+    }
+
+    // Create project
+    const project = await Project.create({
+      projectId,
+      name,
+      description,
+      client: client._id,
+      startDate,
+      endDate,
+      budget: budget || 0,
+      status: 'Planning',
+      priority: priority || 'Medium',
+      tags: tags || [],
+      files: uploadedFiles,
+      progress: 0,
+      spent: 0,
+      adminRequests: [{
+        requestType: 'Review',
+        urgency: 'Normal',
+        message: requirements || 'New project request from client',
+        requestedBy: {
+          name: client.contactPerson?.name || client.companyName,
+          email: client.contactPerson?.email || client.email
+        },
+        requestedAt: new Date(),
+        status: 'Pending'
+      }]
+    });
+
+    console.log('✅ Project created by client:', project._id);
+
+    // Populate project data
+    await project.populate([
+      { path: 'client', select: 'name companyName email' },
+      { path: 'files.uploadedBy', select: 'name email' }
+    ]);
+
+    // Notify admin
+    try {
+      await notifyProjectCreated({
+        projectId: project._id,
+        name: project.name,
+        clientId: project.client._id,
+        clientName: project.client.companyName || project.client.name,
+        status: 'Planning',
+        startDate: project.startDate,
+        createdBy: 'client'
+      });
+      console.log('📧 Admin notification sent');
+    } catch (notifError) {
+      console.error('Notification error:', notifError);
+    }
+
+    // Emit socket event
+    try {
+      const io = getIO();
+      io.to('admin').emit('project-request', {
+        project: {
+          _id: project._id,
+          projectId: project.projectId,
+          name: project.name,
+          client: project.client,
+          status: 'Planning',
+          requestedAt: new Date()
+        }
+      });
+      console.log('📡 Project request event emitted to admin');
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Project request submitted successfully. Waiting for admin approval.',
+      data: project
+    });
+  } catch (error) {
+    console.error('Create project error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating project',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Update a project
+// @route   PUT /api/client/projects/:id
+// @access  Private (Client only)
+exports.updateProject = async (req, res) => {
   try {
     const { id } = req.params;
-    const clientId = req.user.id;
+    const userId = req.user.id;
+    const updateData = req.body;
 
-    const project = await Project.findOne({ _id: id, client: clientId })
-      .select('name progress milestones status startDate endDate')
-      .lean();
+    console.log('📝 Updating project:', id);
 
+    // Find client
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client profile not found'
+      });
+    }
+
+    // Find project
+    const project = await Project.findOne({ _id: id, client: client._id });
     if (!project) {
       return res.status(404).json({
         success: false,
@@ -588,46 +442,201 @@ exports.getProjectProgress = async (req, res) => {
       });
     }
 
-    // Calculate milestone completion
-    const totalMilestones = project.milestones?.length || 0;
-    const completedMilestones = project.milestones?.filter(m => m.status === 'completed').length || 0;
-    const milestoneProgress = totalMilestones > 0 ? (completedMilestones / totalMilestones) * 100 : 0;
+    // Update allowed fields
+    const allowedFields = ['name', 'description', 'budget', 'priority', 'endDate'];
+    allowedFields.forEach(field => {
+      if (updateData[field] !== undefined) {
+        project[field] = updateData[field];
+      }
+    });
 
-    // Calculate time progress
-    const today = new Date();
-    const start = new Date(project.startDate);
-    const end = new Date(project.endDate);
-    const totalDuration = end - start;
-    const elapsed = today - start;
-    const timeProgress = totalDuration > 0 ? (elapsed / totalDuration) * 100 : 0;
+    // Update tags if provided
+    if (updateData.tags) {
+      project.tags = updateData.tags;
+    }
+
+    await project.save();
+
+    const updatedProject = await Project.findById(project._id)
+      .populate('client', 'companyName contactPerson email')
+      .lean();
+
+    console.log('✅ Project updated successfully');
+
+    res.status(200).json({
+      success: true,
+      message: 'Project updated successfully',
+      data: updatedProject
+    });
+
+  } catch (error) {
+    console.error('❌ Update project error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update project',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Delete a project
+// @route   DELETE /api/client/projects/:id
+// @access  Private (Client only)
+exports.deleteProject = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    console.log('🗑️ Deleting project:', id);
+
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client profile not found'
+      });
+    }
+
+    const project = await Project.findOne({ _id: id, client: client._id });
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found or access denied'
+      });
+    }
+
+    // Check if project can be deleted
+    if (project.status === 'In Progress' || project.status === 'Completed') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete project with status: ${project.status}`
+      });
+    }
+
+    // Soft delete
+    project.isActive = false;
+    await project.save();
+
+    console.log('✅ Project deleted successfully');
+
+    res.status(200).json({
+      success: true,
+      message: 'Project deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Delete project error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete project',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Upload files to project
+// @route   POST /api/client/projects/:id/upload
+// @access  Private (Client only)
+exports.uploadProjectFiles = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: req.params.id,
+      client: client._id
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload at least one file'
+      });
+    }
+
+    const newFiles = req.files.map(file => ({
+      name: file.originalname,
+      url: `/uploads/projects/${file.filename}`,
+      uploadedBy: req.user.id,
+      uploadedAt: new Date()
+    }));
+
+    project.files = [...project.files, ...newFiles];
+    await project.save();
+
+    await project.populate('files.uploadedBy', 'name email');
+
+    res.status(200).json({
+      success: true,
+      message: `${newFiles.length} file(s) uploaded successfully`,
+      data: project.files
+    });
+  } catch (error) {
+    console.error('Upload files error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error uploading files',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get project progress
+// @route   GET /api/client/projects/:id/progress
+// @access  Private (Client only)
+exports.getProjectProgress = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: id,
+      client: client._id
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
 
     res.status(200).json({
       success: true,
       data: {
-        project: {
-          name: project.name,
-          status: project.status,
-          overallProgress: project.progress || 0
-        },
-        milestones: {
-          total: totalMilestones,
-          completed: completedMilestones,
-          progress: Math.round(milestoneProgress)
-        },
-        timeline: {
-          startDate: project.startDate,
-          endDate: project.endDate,
-          daysElapsed: Math.floor(elapsed / (1000 * 60 * 60 * 24)),
-          daysRemaining: Math.ceil((end - today) / (1000 * 60 * 60 * 24)),
-          timeProgress: Math.round(timeProgress)
-        }
+        progress: project.progress,
+        status: project.status,
+        milestones: project.milestones,
+        deliverables: project.deliverables
       }
     });
   } catch (error) {
-    console.error('Get project progress error:', error);
+    console.error('Get progress error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch project progress',
+      message: 'Error fetching progress',
       error: error.message
     });
   }
@@ -638,11 +647,19 @@ exports.getProjectProgress = async (req, res) => {
 // @access  Private (Client only)
 exports.getProjectTimeline = async (req, res) => {
   try {
+    const userId = req.user.id;
     const { id } = req.params;
-    const clientId = req.user.id;
 
-    const project = await Project.findOne({ _id: id, client: clientId })
-      .select('name milestones activities createdAt')
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({ _id: id, client: client._id })
+      .select('name milestones createdAt')
       .lean();
 
     if (!project) {
@@ -652,7 +669,6 @@ exports.getProjectTimeline = async (req, res) => {
       });
     }
 
-    // Combine milestones and activities into timeline
     const timeline = [];
 
     // Add milestones
@@ -660,7 +676,7 @@ exports.getProjectTimeline = async (req, res) => {
       project.milestones.forEach(milestone => {
         timeline.push({
           type: 'milestone',
-          title: milestone.title,
+          title: milestone.name,
           description: milestone.description,
           date: milestone.dueDate,
           status: milestone.status,
@@ -669,21 +685,7 @@ exports.getProjectTimeline = async (req, res) => {
       });
     }
 
-    // Add activities
-    if (project.activities) {
-      project.activities.forEach(activity => {
-        timeline.push({
-          type: 'activity',
-          title: activity.action,
-          description: activity.description,
-          date: activity.timestamp,
-          status: 'completed',
-          user: activity.user
-        });
-      });
-    }
-
-    // Sort by date (most recent first)
+    // Sort by date
     timeline.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     res.status(200).json({
@@ -709,10 +711,18 @@ exports.getProjectTimeline = async (req, res) => {
 // @access  Private (Client only)
 exports.getProjectMilestones = async (req, res) => {
   try {
+    const userId = req.user.id;
     const { id } = req.params;
-    const clientId = req.user.id;
 
-    const project = await Project.findOne({ _id: id, client: clientId })
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({ _id: id, client: client._id })
       .select('name milestones')
       .lean();
 
@@ -740,28 +750,241 @@ exports.getProjectMilestones = async (req, res) => {
   }
 };
 
-// @desc    Get client's meetings
-// @route   GET /api/client/meetings
+// @desc    Send project to admin
+// @route   POST /api/client/projects/:id/send-to-admin
 // @access  Private (Client only)
-// controllers/clientController.js
+exports.sendToAdmin = async (req, res) => {
+  try {
+    const {
+      requestType,
+      urgency,
+      message
+    } = req.body;
+
+    const userId = req.user.id;
+
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: req.params.id,
+      client: client._id
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    // Add admin request
+    const adminRequest = {
+      requestType: requestType || 'Review',
+      urgency: urgency || 'Normal',
+      message,
+      requestedBy: {
+        name: client.contactPerson?.name || client.companyName,
+        email: client.contactPerson?.email || client.email
+      },
+      requestedAt: new Date(),
+      status: 'Pending'
+    };
+
+    project.adminRequests.push(adminRequest);
+    await project.save();
+
+    // Notify admin
+    try {
+      const io = getIO();
+      io.to('admin').emit('admin-request', {
+        projectId: project._id,
+        projectName: project.name,
+        request: adminRequest
+      });
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Request sent to admin successfully',
+      data: adminRequest
+    });
+  } catch (error) {
+    console.error('Send to admin error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error sending request to admin',
+      error: error.message
+    });
+  }
+};
+
+// ============================================
+// FEEDBACK
+// ============================================
+
+// @desc    Submit feedback
+// @route   POST /api/client/projects/:id/feedback
+// @access  Private (Client only)
+exports.submitFeedback = async (req, res) => {
+  try {
+    const {
+      type,
+      subject,
+      message,
+      rating,
+      satisfactionLevel
+    } = req.body;
+
+    const userId = req.user.id;
+
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: req.params.id,
+      client: client._id
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    // Validation
+    if (!subject || !message || !rating) {
+      return res.status(400).json({
+        success: false,
+        message: 'Subject, message, and rating are required'
+      });
+    }
+
+    if (rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating must be between 1 and 5'
+      });
+    }
+
+    // Add feedback
+    const feedback = {
+      type: type || 'general',
+      subject,
+      message,
+      rating,
+      satisfactionLevel: satisfactionLevel || 5,
+      submittedBy: client._id,
+      submittedAt: new Date(),
+      status: 'Pending'
+    };
+
+    project.feedback.push(feedback);
+    await project.save();
+
+    await project.populate('feedback.submittedBy', 'name email');
+
+    // Notify admin
+    try {
+      const io = getIO();
+      io.to('admin').emit('feedback-received', {
+        projectId: project._id,
+        projectName: project.name,
+        feedback: feedback
+      });
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Feedback submitted successfully',
+      data: project.feedback[project.feedback.length - 1]
+    });
+  } catch (error) {
+    console.error('Submit feedback error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error submitting feedback',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get feedback history
+// @route   GET /api/client/projects/:id/feedback
+// @access  Private (Client only)
+exports.getFeedbackHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({ _id: id, client: client._id })
+      .select('name feedback')
+      .populate('feedback.submittedBy', 'name email')
+      .populate('feedback.respondedBy', 'name email')
+      .lean();
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found or access denied'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        projectName: project.name,
+        feedback: project.feedback || []
+      }
+    });
+  } catch (error) {
+    console.error('Get feedback history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch feedback history',
+      error: error.message
+    });
+  }
+};
+
+// ============================================
+// MEETINGS
+// ============================================
 
 // @desc    Get client's meetings
 // @route   GET /api/client/meetings
 // @access  Private (Client only)
 exports.getMyMeetings = async (req, res) => {
   try {
-    console.log('====================================');
     console.log('📅 FETCHING CLIENT MEETINGS');
-    console.log('====================================');
-    console.log('User ID:', req.user.id);
-    console.log('User role:', req.user.role);
-    
     const userId = req.user.id;
     const { status, upcoming } = req.query;
 
-    // ✅ CRITICAL FIX: Search by User ID in participants.user field
     const query = { 
-      'participants.user': userId  // ✅ This is the correct way!
+      'participants.user': userId
     };
 
     if (status) {
@@ -769,34 +992,27 @@ exports.getMyMeetings = async (req, res) => {
     }
 
     if (upcoming === 'true') {
-      query.startTime = { $gte: new Date() };  // ✅ Changed from meetingDate to startTime
+      query.startTime = { $gte: new Date() };
       query.status = { $ne: 'cancelled' };
     }
 
-    console.log('🔍 Query:', JSON.stringify(query, null, 2));
-
     const meetings = await Meeting.find(query)
       .populate('organizer', 'name email')
-      .populate('participants.user', 'name email role')  // ✅ Populate participants.user
+      .populate('participants.user', 'name email role')
       .populate('project', 'name')
-      .sort({ startTime: upcoming === 'true' ? 1 : -1 })  // ✅ Sort by startTime
+      .sort({ startTime: upcoming === 'true' ? 1 : -1 })
       .lean();
 
     console.log(`✅ Found ${meetings.length} meetings for client`);
-    console.log('====================================');
 
     res.status(200).json({
       success: true,
       count: meetings.length,
-      meetings  // ✅ Changed from 'data' to 'meetings' to match frontend
+      meetings
     });
     
   } catch (error) {
-    console.error('====================================');
-    console.error('❌ GET CLIENT MEETINGS ERROR');
-    console.error('====================================');
-    console.error('Error:', error);
-    
+    console.error('❌ GET CLIENT MEETINGS ERROR:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch meetings',
@@ -805,7 +1021,7 @@ exports.getMyMeetings = async (req, res) => {
   }
 };
 
-// @desc    Get single meeting details
+// @desc    Get single meeting
 // @route   GET /api/client/meetings/:id
 // @access  Private (Client only)
 exports.getMeeting = async (req, res) => {
@@ -813,12 +1029,9 @@ exports.getMeeting = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    console.log('📋 Fetching meeting:', id, 'for user:', userId);
-
-    // ✅ CRITICAL FIX: Search by User ID
     const meeting = await Meeting.findOne({
       _id: id,
-      'participants.user': userId  // ✅ Correct query
+      'participants.user': userId
     })
       .populate('organizer', 'name email')
       .populate('participants.user', 'name email role avatar')
@@ -846,477 +1059,10 @@ exports.getMeeting = async (req, res) => {
     });
   }
 };
-// @desc    Schedule a new meeting
-// @route   POST /api/client/meetings
-// @access  Private (Client only)
-exports.scheduleMeeting = async (req, res) => {
-  try {
-    const clientId = req.user.id;
-    const { title, description, meetingDate, duration, location, meetingLink, project, participants } = req.body;
 
-    // Validation
-    if (!title || !meetingDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide title and meeting date'
-      });
-    }
-
-    // Create meeting with client as organizer
-    const meeting = await Meeting.create({
-      title,
-      description,
-      meetingDate,
-      duration: duration || 60,
-      location,
-      meetingLink,
-      project,
-      organizer: clientId,
-      participants: [...(participants || []), clientId], // Include client in participants
-      status: 'scheduled'
-    });
-
-    const populatedMeeting = await Meeting.findById(meeting._id)
-      .populate('organizer', 'name email')
-      .populate('participants', 'name email role')
-      .populate('project', 'name');
-
-    res.status(201).json({
-      success: true,
-      message: 'Meeting scheduled successfully',
-      data: populatedMeeting
-    });
-  } catch (error) {
-    console.error('Schedule meeting error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to schedule meeting',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Cancel a meeting
-// @route   DELETE /api/client/meetings/:id
-// @access  Private (Client only - organizer)
-exports.cancelMeeting = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const clientId = req.user.id;
-
-    const meeting = await Meeting.findOne({ _id: id, organizer: clientId });
-
-    if (!meeting) {
-      return res.status(404).json({
-        success: false,
-        message: 'Meeting not found or you are not authorized to cancel it'
-      });
-    }
-
-    meeting.status = 'cancelled';
-    await meeting.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Meeting cancelled successfully',
-      data: meeting
-    });
-  } catch (error) {
-    console.error('Cancel meeting error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to cancel meeting',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get project reports
-// @route   GET /api/client/projects/:id/reports
-// @access  Private (Client only)
-exports.getProjectReports = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const clientId = req.user.id;
-
-    // Verify project belongs to client
-    const project = await Project.findOne({ _id: id, client: clientId });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    // Get daily reports related to this project
-    const reports = await DailyReport.find({ project: id })
-      .populate('employee', 'name email role')
-      .sort({ reportDate: -1 })
-      .lean();
-
-    res.status(200).json({
-      success: true,
-      count: reports.length,
-      data: reports
-    });
-  } catch (error) {
-    console.error('Get project reports error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch project reports',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get weekly project report
-// @route   GET /api/client/projects/:id/reports/weekly
-// @access  Private (Client only)
-exports.getWeeklyReport = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const clientId = req.user.id;
-
-    // Verify project belongs to client
-    const project = await Project.findOne({ _id: id, client: clientId });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    // Get reports from last 7 days
-    const lastWeek = new Date();
-    lastWeek.setDate(lastWeek.getDate() - 7);
-
-    const reports = await DailyReport.find({
-      project: id,
-      reportDate: { $gte: lastWeek }
-    })
-      .populate('employee', 'name email role')
-      .sort({ reportDate: -1 })
-      .lean();
-
-    // Aggregate data
-    const totalHours = reports.reduce((sum, r) => sum + (r.hoursWorked || 0), 0);
-    const completedTasks = reports.reduce((sum, r) => sum + (r.tasksCompleted?.length || 0), 0);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        projectName: project.name,
-        period: {
-          from: lastWeek,
-          to: new Date()
-        },
-        summary: {
-          totalReports: reports.length,
-          totalHours: totalHours.toFixed(2),
-          completedTasks
-        },
-        reports
-      }
-    });
-  } catch (error) {
-    console.error('Get weekly report error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch weekly report',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Download project report
-// @route   GET /api/client/reports/:id/download
-// @access  Private (Client only)
-exports.downloadReport = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const clientId = req.user.id;
-
-    const report = await DailyReport.findById(id)
-      .populate('employee', 'name email role')
-      .populate('project', 'name client')
-      .lean();
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found'
-      });
-    }
-
-    // Verify client owns the project
-    if (report.project.client.toString() !== clientId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
-
-    // In a real application, generate PDF or Excel file
-    // For now, return formatted data
-    res.status(200).json({
-      success: true,
-      message: 'Report data ready for download',
-      data: report
-    });
-  } catch (error) {
-    console.error('Download report error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to download report',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Submit project feedback
-// @route   POST /api/client/projects/:id/feedback
-// @access  Private (Client only)
-exports.submitFeedback = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const clientId = req.user.id;
-    const { rating, comment, category } = req.body;
-
-    // Validation
-    if (!rating || !comment) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide rating and comment'
-      });
-    }
-
-    const project = await Project.findOne({ _id: id, client: clientId });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    // Add feedback
-    if (!project.feedback) {
-      project.feedback = [];
-    }
-
-    project.feedback.push({
-      rating,
-      comment,
-      category: category || 'general',
-      submittedAt: new Date()
-    });
-
-    await project.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Feedback submitted successfully',
-      data: project.feedback[project.feedback.length - 1]
-    });
-  } catch (error) {
-    console.error('Submit feedback error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to submit feedback',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get feedback history
-// @route   GET /api/client/projects/:id/feedback
-// @access  Private (Client only)
-exports.getFeedbackHistory = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const clientId = req.user.id;
-
-    const project = await Project.findOne({ _id: id, client: clientId })
-      .select('name feedback')
-      .lean();
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        projectName: project.name,
-        feedback: project.feedback || []
-      }
-    });
-  } catch (error) {
-    console.error('Get feedback history error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch feedback history',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Approve project milestone
-// @route   POST /api/client/projects/:id/milestones/:milestoneId/approve
-// @access  Private (Client only)
-exports.approveMilestone = async (req, res) => {
-  try {
-    const { id, milestoneId } = req.params;
-    const clientId = req.user.id;
-
-    const project = await Project.findOne({ _id: id, client: clientId });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    const milestone = project.milestones.id(milestoneId);
-
-    if (!milestone) {
-      return res.status(404).json({
-        success: false,
-        message: 'Milestone not found'
-      });
-    }
-
-    milestone.status = 'approved';
-    milestone.approvedAt = new Date();
-
-    await project.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Milestone approved successfully',
-      data: milestone
-    });
-  } catch (error) {
-    console.error('Approve milestone error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to approve milestone',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Request changes to milestone
-// @route   POST /api/client/projects/:id/milestones/:milestoneId/changes
-// @access  Private (Client only)
-exports.requestChanges = async (req, res) => {
-  try {
-    const { id, milestoneId } = req.params;
-    const clientId = req.user.id;
-    const { changeRequest } = req.body;
-
-    if (!changeRequest) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide change request details'
-      });
-    }
-
-    const project = await Project.findOne({ _id: id, client: clientId });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    const milestone = project.milestones.id(milestoneId);
-
-    if (!milestone) {
-      return res.status(404).json({
-        success: false,
-        message: 'Milestone not found'
-      });
-    }
-
-    milestone.status = 'changes_requested';
-    milestone.changeRequest = changeRequest;
-    milestone.changeRequestedAt = new Date();
-
-    await project.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Change request submitted successfully',
-      data: milestone
-    });
-  } catch (error) {
-    console.error('Request changes error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to submit change request',
-      error: error.message
-    });
-  }
-};
-
-// @desc    Rate project satisfaction
-// @route   POST /api/client/projects/:id/rating
-// @access  Private (Client only)
-exports.rateSatisfaction = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const clientId = req.user.id;
-    const { overallRating, communicationRating, qualityRating, timelinessRating, comments } = req.body;
-
-    if (!overallRating) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide overall rating'
-      });
-    }
-
-    const project = await Project.findOne({ _id: id, client: clientId });
-
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: 'Project not found or access denied'
-      });
-    }
-
-    project.clientRating = {
-      overall: overallRating,
-      communication: communicationRating,
-      quality: qualityRating,
-      timeliness: timelinessRating,
-      comments,
-      ratedAt: new Date()
-    };
-
-    await project.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Rating submitted successfully',
-      data: project.clientRating
-    });
-  } catch (error) {
-    console.error('Rate satisfaction error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to submit rating',
-      error: error.message
-    });
-  }
-};
+// ============================================
+// PROFILE MANAGEMENT
+// ============================================
 
 // @desc    Get client profile
 // @route   GET /api/client/profile
@@ -1325,7 +1071,6 @@ exports.getProfile = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Find client by userId reference
     let client = await Client.findOne({ userId: userId })
       .populate('userId', 'name email phone avatar')
       .lean();
@@ -1342,11 +1087,9 @@ exports.getProfile = async (req, res) => {
         });
       }
 
-      // Generate unique client ID
       const count = await Client.countDocuments();
       const clientId = `CL${String(count + 1).padStart(4, '0')}`;
 
-      // Create client record
       const newClient = await Client.create({
         userId: userId,
         clientId: clientId,
@@ -1374,7 +1117,7 @@ exports.getProfile = async (req, res) => {
         .lean();
     }
 
-    // Flatten the data structure for frontend
+    // Flatten data structure
     const profileData = {
       _id: client._id,
       clientId: client.clientId,
@@ -1386,7 +1129,7 @@ exports.getProfile = async (req, res) => {
       industry: client.industry || '',
       companySize: client.companySize || '',
       companyWebsite: client.companyWebsite || '',
-      website: client.companyWebsite || '', // Alias for frontend
+      website: client.companyWebsite || '',
       address: client.address || {
         street: '',
         city: '',
@@ -1416,20 +1159,12 @@ exports.getProfile = async (req, res) => {
 // @desc    Update client profile
 // @route   PUT /api/client/profile
 // @access  Private (Client only)
-// @desc    Update client profile
-// @route   PUT /api/client/profile
-// @access  Private (Client only)
-// controllers/clientController.js - UPDATED updateProfile function
-
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
     
-    console.log('====================================');
     console.log('📝 UPDATE CLIENT PROFILE');
     console.log('User ID:', userId);
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-    console.log('====================================');
 
     const {
       name,
@@ -1448,44 +1183,39 @@ exports.updateProfile = async (req, res) => {
       taxId
     } = req.body;
 
-    // ✅ Validation: Name and email are required
+    // Validation
     if (!name || !name.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Name is required',
-        errors: ['Please provide your name']
+        message: 'Name is required'
       });
     }
 
     if (!email || !email.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Email is required',
-        errors: ['Please provide your email']
+        message: 'Email is required'
       });
     }
 
-    // ✅ Email validation
+    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid email format',
-        errors: ['Please provide a valid email address']
+        message: 'Invalid email format'
       });
     }
 
-    // Find client by userId
+    // Find client
     let client = await Client.findOne({ userId: userId });
 
     if (!client) {
       console.log('❌ Client not found, creating new client...');
       
-      // Generate client ID
       const count = await Client.countDocuments();
       const clientId = `CL${String(count + 1).padStart(4, '0')}`;
       
-      // Create new client with minimal required fields
       client = await Client.create({
         userId: userId,
         clientId: clientId,
@@ -1511,7 +1241,7 @@ exports.updateProfile = async (req, res) => {
       console.log('✅ New client created:', client.clientId);
     }
 
-    // Update User model fields
+    // Update User model
     const User = require('../models/User');
     const user = await User.findById(userId);
 
@@ -1522,7 +1252,7 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
-    // Check if email is being changed and if it's already taken
+    // Check email uniqueness
     if (email.trim() !== user.email) {
       const existingUser = await User.findOne({ 
         email: email.trim(),
@@ -1532,40 +1262,26 @@ exports.updateProfile = async (req, res) => {
       if (existingUser) {
         return res.status(400).json({
           success: false,
-          message: 'Email already in use',
-          errors: ['This email is already registered to another account']
+          message: 'Email already in use'
         });
       }
 
       user.email = email.trim();
     }
 
-    // Update user fields
     user.name = name.trim();
     if (phone !== undefined) user.phone = phone?.trim() || '';
     if (avatar !== undefined) user.avatar = avatar?.trim() || '';
     
     await user.save();
-    console.log('✅ User updated');
 
-    // Update Client model fields
-    if (companyName !== undefined) {
-      client.companyName = companyName?.trim() || '';
-    }
-    
-    if (industry !== undefined) {
-      client.industry = industry?.trim() || '';
-    }
-    
-    if (website !== undefined) {
-      client.companyWebsite = website?.trim() || '';
-    }
-    
-    if (companySize !== undefined) {
-      client.companySize = companySize?.trim() || '';
-    }
+    // Update Client model
+    if (companyName !== undefined) client.companyName = companyName?.trim() || '';
+    if (industry !== undefined) client.industry = industry?.trim() || '';
+    if (website !== undefined) client.companyWebsite = website?.trim() || '';
+    if (companySize !== undefined) client.companySize = companySize?.trim() || '';
 
-    // Initialize address if it doesn't exist
+    // Initialize address if needed
     if (!client.address) {
       client.address = {
         street: '',
@@ -1576,49 +1292,35 @@ exports.updateProfile = async (req, res) => {
       };
     }
 
-    // Update address fields
     if (address !== undefined) client.address.street = address?.trim() || '';
     if (city !== undefined) client.address.city = city?.trim() || '';
     if (state !== undefined) client.address.state = state?.trim() || '';
     if (zipCode !== undefined) client.address.zipCode = zipCode?.trim() || '';
     if (country !== undefined) client.address.country = country?.trim() || '';
 
-    // Initialize taxInfo if it doesn't exist
+    // Initialize taxInfo if needed
     if (!client.taxInfo) {
-      client.taxInfo = {
-        taxId: ''
-      };
+      client.taxInfo = { taxId: '' };
     }
 
-    // Update tax info
-    if (taxId !== undefined) {
-      client.taxInfo.taxId = taxId?.trim() || '';
-    }
+    if (taxId !== undefined) client.taxInfo.taxId = taxId?.trim() || '';
 
-    // Initialize contactPerson if it doesn't exist
+    // Initialize contactPerson if needed
     if (!client.contactPerson) {
-      client.contactPerson = {
-        name: '',
-        email: '',
-        phone: ''
-      };
+      client.contactPerson = { name: '', email: '', phone: '' };
     }
 
-    // Update contact person
     client.contactPerson.name = name.trim();
     client.contactPerson.email = email.trim();
     if (phone !== undefined) client.contactPerson.phone = phone?.trim() || '';
 
-    // Save client
     await client.save();
-    console.log('✅ Client saved successfully');
 
-    // Populate and return updated data
+    // Populate and return
     client = await Client.findById(client._id)
       .populate('userId', 'name email phone avatar')
       .lean();
 
-    // Flatten the data structure
     const profileData = {
       _id: client._id,
       clientId: client.clientId,
@@ -1643,9 +1345,7 @@ exports.updateProfile = async (req, res) => {
       }
     };
 
-    console.log('====================================');
     console.log('✅ PROFILE UPDATE SUCCESSFUL');
-    console.log('====================================');
 
     res.status(200).json({
       success: true,
@@ -1653,15 +1353,8 @@ exports.updateProfile = async (req, res) => {
       data: profileData
     });
   } catch (error) {
-    console.error('====================================');
-    console.error('❌ UPDATE PROFILE ERROR');
-    console.error('====================================');
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    console.error('====================================');
+    console.error('❌ UPDATE PROFILE ERROR:', error);
     
-    // Check for specific errors
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -1674,58 +1367,13 @@ exports.updateProfile = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: 'Duplicate entry detected',
-        error: 'Email or other unique field already exists',
-        errors: ['This email is already registered']
+        message: 'Email already exists'
       });
     }
 
     res.status(500).json({
       success: false,
       message: 'Failed to update profile',
-      error: error.message
-    });
-  }
-};
-// @desc    Update company information
-// @route   PUT /api/client/profile/company
-// @access  Private (Client only)
-exports.updateCompanyInfo = async (req, res) => {
-  try {
-    const clientId = req.user.id;
-    const { companyName, industry, website, companySize, taxId } = req.body;
-
-    const client = await Client.findById(clientId);
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'Client not found'
-      });
-    }
-
-    // Update company fields
-    if (companyName) client.companyName = companyName;
-    if (industry) client.industry = industry;
-    if (website) client.website = website;
-    if (companySize) client.companySize = companySize;
-    if (taxId) client.taxId = taxId;
-
-    await client.save();
-
-    // Remove password from response
-    client.password = undefined;
-
-    res.status(200).json({
-      success: true,
-      message: 'Company information updated successfully',
-      data: client
-    });
-  } catch (error) {
-    console.error('Update company info error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update company information',
       error: error.message
     });
   }
@@ -1746,7 +1394,6 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    // Get user with password
     const User = require('../models/User');
     const user = await User.findById(userId).select('+password');
 
@@ -1757,7 +1404,6 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    // Check current password
     const isMatch = await user.comparePassword(currentPassword);
 
     if (!isMatch) {
@@ -1767,7 +1413,6 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    // Update password
     user.password = newPassword;
     await user.save();
 
@@ -1785,82 +1430,174 @@ exports.changePassword = async (req, res) => {
   }
 };
 
-// GET /api/client/projects
-// FIXED: Client Controller - getMyProjects Function
-// Replace your getMyProjects function with this
-
-exports.getMyProjects = async (req, res) => {
+// @desc    Approve milestone
+// @route   POST /api/client/projects/:id/milestones/:milestoneId/approve
+// @access  Private (Client only)
+exports.approveMilestone = async (req, res) => {
   try {
+    const { id, milestoneId } = req.params;
     const userId = req.user.id;
-    console.log('📊 Fetching projects for user:', userId);
-    
-    // Find the client document using userId
+
     const client = await Client.findOne({ userId: userId });
-    
     if (!client) {
-      console.log('❌ Client not found for userId:', userId);
       return res.status(404).json({
         success: false,
-        message: 'Client profile not found'
+        message: 'Client not found'
       });
     }
-    
-    console.log('✅ Client found:', client.clientId, client._id);
-    
-    const { status, search, sortBy = 'createdAt', order = 'desc' } = req.query;
-    
-    // Build query using client._id (ObjectId)
-    const query = { 
-      client: client._id,  // ✅ Use client._id, not userId
-      isActive: true 
-    };
-    
-    if (status && status !== 'all') {
-      query.status = status;
+
+    const project = await Project.findOne({ _id: id, client: client._id });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found or access denied'
+      });
     }
-    
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
+
+    const milestone = project.milestones.id(milestoneId);
+
+    if (!milestone) {
+      return res.status(404).json({
+        success: false,
+        message: 'Milestone not found'
+      });
     }
-    
-    console.log('🔍 Project query:', query);
-    
-    // Sort options
-    const sortOptions = {};
-    sortOptions[sortBy] = order === 'asc' ? 1 : -1;
-    
-    const projects = await Project.find(query)
-      .populate('projectManager', 'name email designation')
-      .populate('assignedTeam', 'name email role')
-      .sort(sortOptions)
-      .lean();
-    
-    console.log(`✅ Found ${projects.length} projects for client`);
-    console.log('Project details:', projects.map(p => ({
-      id: p._id,
-      name: p.name,
-      status: p.status,
-      priority: p.priority
-    })));
-    
+
+    milestone.status = 'Approved';
+    milestone.approvedAt = new Date();
+
+    await project.save();
+
     res.status(200).json({
       success: true,
-      count: projects.length,
-      data: projects
+      message: 'Milestone approved successfully',
+      data: milestone
     });
   } catch (error) {
-    console.error('❌ Get client projects error:', error);
+    console.error('Approve milestone error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch projects',
+      message: 'Failed to approve milestone',
       error: error.message
     });
   }
 };
 
+// @desc    Request changes
+// @route   POST /api/client/projects/:id/milestones/:milestoneId/changes
+// @access  Private (Client only)
+exports.requestChanges = async (req, res) => {
+  try {
+    const { id, milestoneId } = req.params;
+    const userId = req.user.id;
+    const { comment } = req.body;
 
+    if (!comment) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide change request details'
+      });
+    }
 
-module.exports = exports;
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({ _id: id, client: client._id });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found or access denied'
+      });
+    }
+
+    const milestone = project.milestones.id(milestoneId);
+
+    if (!milestone) {
+      return res.status(404).json({
+        success: false,
+        message: 'Milestone not found'
+      });
+    }
+
+    milestone.status = 'Needs Changes';
+    milestone.feedback = comment;
+
+    await project.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Change request submitted successfully',
+      data: milestone
+    });
+  } catch (error) {
+    console.error('Request changes error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit change request',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Rate satisfaction
+// @route   POST /api/client/projects/:id/rating
+// @access  Private (Client only)
+exports.rateSatisfaction = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { overallRating, comments } = req.body;
+
+    if (!overallRating) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide overall rating'
+      });
+    }
+
+    const client = await Client.findOne({ userId: userId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    const project = await Project.findOne({ _id: id, client: client._id });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found or access denied'
+      });
+    }
+
+    project.clientRating = {
+      overall: overallRating,
+      comments,
+      ratedAt: new Date()
+    };
+
+    await project.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Rating submitted successfully',
+      data: project.clientRating
+    });
+  } catch (error) {
+    console.error('Rate satisfaction error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit rating',
+      error: error.message
+    });
+  }
+};

@@ -1,118 +1,183 @@
-// config/multer.js
-// Multer configuration for file uploads (avatars, documents, reports)
+// ============================================
+// Multer Configuration - FILE UPLOADS
+// ============================================
 
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure upload directories exist
-const createUploadDirs = () => {
-  const dirs = [
-    './uploads',
-    './uploads/avatars',
-    './uploads/documents',
-    './uploads/reports'
-  ];
+// ============================================
+// STORAGE CONFIGURATION
+// ============================================
 
-  dirs.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-  });
-};
-
-createUploadDirs();
-
-// Storage configuration
-const storage = multer.diskStorage({
+// Avatar storage
+const avatarStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    let uploadPath = './uploads/';
-
-    // Determine upload path based on file type or request
-    if (req.path.includes('avatar') || file.fieldname === 'avatar') {
-      uploadPath += 'avatars/';
-    } else if (req.path.includes('report') || file.fieldname === 'report') {
-      uploadPath += 'reports/';
-    } else {
-      uploadPath += 'documents/';
+    const uploadPath = 'uploads/avatars';
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
     }
-
     cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
-    // Generate unique filename: userId_timestamp_originalname
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const userId = req.user ? req.user.id : 'unknown';
-    const ext = path.extname(file.originalname);
-    const nameWithoutExt = path.basename(file.originalname, ext);
-    
-    cb(null, `${userId}_${uniqueSuffix}_${nameWithoutExt}${ext}`);
+    cb(null, 'avatar-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-// File filter - only allow certain file types
-const fileFilter = (req, file, cb) => {
-  // Allowed file extensions
-  const allowedImageTypes = /jpeg|jpg|png|gif|webp/;
-  const allowedDocTypes = /pdf|doc|docx|xls|xlsx|txt|csv/;
-  
-  const extname = path.extname(file.originalname).toLowerCase();
-  const mimetype = file.mimetype;
+// Document storage
+const documentStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = 'uploads/documents';
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'doc-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
 
-  // Check if it's an image
-  if (file.fieldname === 'avatar') {
-    const isValidImage = allowedImageTypes.test(extname.slice(1)) && 
-                         mimetype.startsWith('image/');
-    
-    if (isValidImage) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files (JPEG, JPG, PNG, GIF, WEBP) are allowed for avatars!'), false);
+// Report storage
+const reportStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = 'uploads/reports';
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
     }
-  } 
-  // Check if it's a document
-  else {
-    const isValidDoc = allowedDocTypes.test(extname.slice(1));
-    
-    if (isValidDoc) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only PDF, DOC, DOCX, XLS, XLSX, TXT, CSV files are allowed!'), false);
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'report-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+// ✅ PROJECT FILES STORAGE (NEW)
+const projectStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = 'uploads/projects';
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
     }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
+    cb(null, 'project-' + uniqueSuffix + '-' + sanitizedName);
+  }
+});
+
+// ============================================
+// FILE FILTERS
+// ============================================
+
+// Image filter (for avatars)
+const imageFilter = (req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png|gif/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedTypes.test(file.mimetype);
+
+  if (extname && mimetype) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed (jpeg, jpg, png, gif)'));
   }
 };
 
-// Multer configuration
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB max file size
-  },
-  fileFilter: fileFilter
-});
+// Document filter (for documents and reports)
+const documentFilter = (req, file, cb) => {
+  const allowedTypes = /pdf|doc|docx|xls|xlsx|txt|csv/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
 
-// Export different upload types
-module.exports = {
-  // Single file upload
-  uploadAvatar: upload.single('avatar'),
-  uploadDocument: upload.single('document'),
-  uploadReport: upload.single('report'),
-  
-  // Multiple file uploads
-  uploadMultipleDocuments: upload.array('documents', 5), // Max 5 files
-  
-  // Multiple fields
-  uploadMixed: upload.fields([
-    { name: 'avatar', maxCount: 1 },
-    { name: 'documents', maxCount: 5 }
-  ]),
-
-  // Delete file helper
-  deleteFile: (filePath) => {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      return true;
-    }
-    return false;
+  if (extname) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only document files are allowed (pdf, doc, docx, xls, xlsx, txt, csv)'));
   }
+};
+
+// ✅ Project files filter (more permissive - accepts images, documents, archives)
+const projectFileFilter = (req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|xls|xlsx|txt|csv|zip|rar|ppt|pptx/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+
+  if (extname) {
+    cb(null, true);
+  } else {
+    cb(new Error('File type not allowed. Allowed: images, documents, spreadsheets, presentations, archives'));
+  }
+};
+
+// ============================================
+// MULTER INSTANCES
+// ============================================
+
+// Avatar upload (single file)
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: imageFilter
+}).single('avatar');
+
+// Document upload (single file)
+const uploadDocument = multer({
+  storage: documentStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: documentFilter
+}).single('document');
+
+// Multiple documents upload
+const uploadDocuments = multer({
+  storage: documentStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+  fileFilter: documentFilter
+}).array('documents', 10); // Max 10 files
+
+// Report upload (single file)
+const uploadReport = multer({
+  storage: reportStorage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  fileFilter: documentFilter
+}).single('report');
+
+// ✅ PROJECT FILES UPLOAD (NEW - Multiple files)
+const uploadProjectFiles = multer({
+  storage: projectStorage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB per file
+  fileFilter: projectFileFilter
+}).array('files', 10); // Max 10 files
+
+// ============================================
+// GENERIC UPLOAD FUNCTION (REUSABLE)
+// ============================================
+
+/**
+ * Generic upload function
+ * @param {string} fieldName - Form field name
+ * @param {number} maxCount - Maximum number of files
+ * @returns {Function} Multer middleware
+ */
+const uploadMultiple = (fieldName = 'files', maxCount = 10) => {
+  return multer({
+    storage: projectStorage,
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB per file
+    fileFilter: projectFileFilter
+  }).array(fieldName, maxCount);
+};
+
+// ============================================
+// EXPORTS
+// ============================================
+
+module.exports = {
+  uploadAvatar,
+  uploadDocument,
+  uploadDocuments,
+  uploadReport,
+  uploadProjectFiles,
+  uploadMultiple // ✅ Generic reusable upload
 };

@@ -1,64 +1,56 @@
-// routes/clientRoutes.js
+// ============================================
+// Client Routes - WITH FILE UPLOAD & FEEDBACK
+// Routes/clientRoutes.js
+// ============================================
 
 const express = require('express');
 const router = express.Router();
-const clientController = require('../controllers/clientController');
-const notificationController = require('../controllers/notificationController'); // ✅ ADD THIS
+const {
+  getMyProjects,
+  getProject,
+  createProject,
+  uploadProjectFiles,
+  submitFeedback,
+  getProjectProgress,
+  sendToAdmin
+} = require('../controllers/clientController');
 const { protect, authorize } = require('../middleware/auth');
+const { uploadMultiple } = require('../config/multer');
 
-// Apply authentication and client role restriction to all routes
+// Protect all client routes
 router.use(protect);
 router.use(authorize('client'));
 
-// Dashboard Routes
-router.get('/dashboard', clientController.getDashboard);
+// ============================================
+// PROJECT ROUTES
+// ============================================
 
-// ============ NOTIFICATION ROUTES ============ ✅ ADD THESE
-router.get('/notifications', notificationController.getClientNotifications);
-router.patch('/notifications/:id/read', notificationController.markAsRead);
-router.patch('/notifications/:id/unread', notificationController.markAsUnread);
-router.patch('/notifications/mark-all-read', notificationController.markAllRead);
-router.delete('/notifications/:id', notificationController.deleteNotification);
+// GET all client projects, POST create project with files
+router.route('/projects')
+  .get(getMyProjects)
+  .post(uploadMultiple('files', 10), createProject); // ✅ Allow up to 10 files
 
-// Project Routes
-router.get('/projects', clientController.getMyProjects);
-router.get('/projects/:id', clientController.getProject);
-router.get('/projects/:id/progress', clientController.getProjectProgress);
-router.get('/projects/:id/timeline', clientController.getProjectTimeline);
-router.get('/projects/:id/milestones', clientController.getProjectMilestones);
+// GET single project
+router.get('/projects/:id', getProject);
 
-// ============ NEW ROUTES ============
-router.post('/projects', clientController.createProject);
-router.put('/projects/:id', clientController.updateProject);
-router.delete('/projects/:id', clientController.deleteProject);
-router.post('/projects/send-to-admin', clientController.sendProjectToAdmin);
+// Upload additional files to project
+router.post('/projects/:id/upload', uploadMultiple('files', 10), uploadProjectFiles);
 
-// Meeting Routes
-router.get('/meetings', clientController.getMyMeetings);
-router.get('/meetings/:id', clientController.getMeeting);
-router.post('/meetings', clientController.scheduleMeeting);
-router.delete('/meetings/:id', clientController.cancelMeeting);
+// ============================================
+// FEEDBACK ROUTES
+// ============================================
 
-// Report Routes
-router.get('/projects/:id/reports', clientController.getProjectReports);
-router.get('/projects/:id/reports/weekly', clientController.getWeeklyReport);
-router.get('/reports/:id/download', clientController.downloadReport);
+// Submit feedback for project
+router.post('/projects/:id/feedback', submitFeedback);
 
-// Feedback Routes
-router.post('/projects/:id/feedback', clientController.submitFeedback);
-router.get('/projects/:id/feedback', clientController.getFeedbackHistory);
+// ============================================
+// PROGRESS & ADMIN ROUTES
+// ============================================
 
-// Milestone Management Routes
-router.post('/projects/:id/milestones/:milestoneId/approve', clientController.approveMilestone);
-router.post('/projects/:id/milestones/:milestoneId/changes', clientController.requestChanges);
+// Get project progress
+router.get('/projects/:id/progress', getProjectProgress);
 
-// Rating Route
-router.post('/projects/:id/rating', clientController.rateSatisfaction);
-
-// Profile Routes
-router.get('/profile', clientController.getProfile);
-router.put('/profile', clientController.updateProfile);
-router.put('/profile/company', clientController.updateCompanyInfo);
-router.put('/password', clientController.changePassword);
+// Send project/request to admin
+router.post('/projects/:id/send-to-admin', sendToAdmin);
 
 module.exports = router;

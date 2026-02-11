@@ -1,6 +1,6 @@
-// ============================================
-// Project Controller
-// Handles all project-related operations
+// Project Controller - WITH FILE UPLOAD SUPPORT
+// Admin can upload files when creating/completing projects
+// Client can upload files when creating projects
 // ============================================
 
 const Project = require('../models/Project');
@@ -20,23 +20,21 @@ const generateProjectId = async () => {
   const randomNum = Math.floor(100000 + Math.random() * 900000);
   const projectId = `${prefix}-${randomNum}`;
   
-  // Check if already exists
   const exists = await Project.findOne({ projectId });
   if (exists) {
-    return generateProjectId(); // Recursively try again
+    return generateProjectId();
   }
   
   return projectId;
 };
 
-// @desc    Get all projects
+// @desc    Get all projects (Admin)
 // @route   GET /api/admin/projects
 // @access  Private/Admin
 exports.getProjects = async (req, res) => {
   try {
     const { search, status, client, page = 1, limit = 10 } = req.query;
 
-    // Build query
     let query = {};
 
     if (search) {
@@ -51,7 +49,6 @@ exports.getProjects = async (req, res) => {
       query.client = client;
     }
 
-    // Pagination
     const skip = (page - 1) * limit;
     const total = await Project.countDocuments(query);
 
@@ -67,6 +64,7 @@ exports.getProjects = async (req, res) => {
         select: 'name email userId',
         populate: { path: 'userId', select: 'name email' }
       })
+      .populate('files.uploadedBy', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -77,7 +75,7 @@ exports.getProjects = async (req, res) => {
       total,
       page: parseInt(page),
       pages: Math.ceil(total / limit),
-      data: projects
+      projects: projects // ✅ Changed from 'data' to 'projects'
     });
   } catch (error) {
     console.error('Get projects error:', error);
@@ -105,7 +103,8 @@ exports.getProject = async (req, res) => {
         path: 'team.employee',
         select: 'name email userId',
         populate: { path: 'userId', select: 'name email' }
-      });
+      })
+      .populate('files.uploadedBy', 'name email');
 
     if (!project) {
       return res.status(404).json({
@@ -114,12 +113,10 @@ exports.getProject = async (req, res) => {
       });
     }
 
-    // Get project tasks
     const tasks = await Task.find({ project: project._id })
       .populate('assignedTo', 'name email')
       .sort({ createdAt: -1 });
 
-    // Calculate progress
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(task => task.status === 'completed').length;
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -146,7 +143,7 @@ exports.getProject = async (req, res) => {
   }
 };
 
-// @desc    Create new project
+// @desc    Create new project (Admin)
 // @route   POST /api/admin/projects
 // @access  Private/Admin
 exports.createProject = async (req, res) => {
@@ -190,9 +187,21 @@ exports.createProject = async (req, res) => {
       }
     }
 
-    // ✅ Create project with generated projectId
+    // ✅ Handle file uploads (if any)
+    let uploadedFiles = [];
+    if (req.files && req.files.length > 0) {
+      uploadedFiles = req.files.map(file => ({
+        name: file.originalname,
+        url: `/uploads/projects/${file.filename}`,
+        uploadedBy: req.user.id,
+        uploadedAt: new Date()
+      }));
+      console.log('📎 Files uploaded:', uploadedFiles.length);
+    }
+
+    // ✅ Create project with files
     const project = await Project.create({
-      projectId, // ✅ Include generated ID
+      projectId,
       name,
       description,
       client,
@@ -203,6 +212,7 @@ exports.createProject = async (req, res) => {
       status: status || 'Planning',
       priority: priority || 'Medium',
       tags: tags || [],
+      files: uploadedFiles, // ✅ Add files
       progress: 0,
       spent: 0
     });
@@ -216,7 +226,8 @@ exports.createProject = async (req, res) => {
         path: 'projectManager', 
         select: 'name email userId',
         populate: { path: 'userId', select: 'name email' }
-      }
+      },
+      { path: 'files.uploadedBy', select: 'name email' }
     ]);
 
     // ✅ Send notifications
@@ -238,7 +249,6 @@ exports.createProject = async (req, res) => {
     try {
       const io = getIO();
       
-      // Notify project manager
       if (project.projectManager) {
         io.to(`employee-${project.projectManager._id}`).emit('project-assigned', {
           project: {
@@ -253,7 +263,6 @@ exports.createProject = async (req, res) => {
         });
       }
 
-      // Notify client
       if (project.client) {
         io.to(`client-${project.client._id}`).emit('project-created', {
           project: {
@@ -267,7 +276,6 @@ exports.createProject = async (req, res) => {
         });
       }
 
-      // Notify all admins
       io.to('admin').emit('project-created', { project });
       
       console.log('📡 Project creation events emitted');
@@ -290,14 +298,12 @@ exports.createProject = async (req, res) => {
   }
 };
 
-// @desc    Update project
+// @desc    Update project (Admin)
 // @route   PUT /api/admin/projects/:id
 // @access  Private/Admin
 exports.updateProject = async (req, res) => {
   try {
-    console.log('====================================');
     console.log('🔄 UPDATE PROJECT');
-    console.log('====================================');
     console.log('📝 Project ID:', req.params.id);
     console.log('📊 Update data:', req.body);
     
@@ -330,6 +336,19 @@ exports.updateProject = async (req, res) => {
       }
     });
 
+    // ✅ Handle file uploads (if any)
+    if (req.files && req.files.length > 0) {
+      const newFiles = req.files.map(file => ({
+        name: file.originalname,
+        url: `/uploads/projects/${file.filename}`,
+        uploadedBy: req.user.id,
+        uploadedAt: new Date()
+      }));
+      
+      project.files = [...project.files, ...newFiles];
+      console.log('📎 New files added:', newFiles.length);
+    }
+
     // Update timestamps
     if (req.body.status === 'In Progress' && !project.actualStartDate) {
       project.actualStartDate = new Date();
@@ -349,7 +368,8 @@ exports.updateProject = async (req, res) => {
         path: 'projectManager',
         select: 'name email userId',
         populate: { path: 'userId', select: 'name email' }
-      });
+      })
+      .populate('files.uploadedBy', 'name email');
     
     console.log('✅ Project populated');
 
@@ -370,7 +390,6 @@ exports.updateProject = async (req, res) => {
     try {
       const io = getIO();
       
-      // Notify project manager
       if (updatedProject.projectManager) {
         io.to(`employee-${updatedProject.projectManager._id}`).emit('project-updated', {
           project: {
@@ -383,14 +402,12 @@ exports.updateProject = async (req, res) => {
         });
       }
 
-      // Notify client
       if (updatedProject.client) {
         io.to(`client-${updatedProject.client._id}`).emit('project-updated', {
           project: updatedProject
         });
       }
 
-      // Notify admins
       io.to('admin').emit('project-updated', { project: updatedProject });
       
       console.log('📡 Project update events emitted');
@@ -398,22 +415,65 @@ exports.updateProject = async (req, res) => {
       console.error('Socket emit error:', socketError);
     }
 
-    console.log('====================================');
-
     res.status(200).json({
       success: true,
       message: 'Project updated successfully',
       data: updatedProject
     });
   } catch (error) {
-    console.error('====================================');
     console.error('❌ Update project error:', error);
-    console.error('Error message:', error.message);
-    console.error('====================================');
     
     res.status(500).json({
       success: false,
       message: 'Error updating project',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Upload files to project (Admin/Client)
+// @route   POST /api/admin/projects/:id/upload
+// @access  Private
+exports.uploadProjectFiles = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload at least one file'
+      });
+    }
+
+    const newFiles = req.files.map(file => ({
+      name: file.originalname,
+      url: `/uploads/projects/${file.filename}`,
+      uploadedBy: req.user.id,
+      uploadedAt: new Date()
+    }));
+
+    project.files = [...project.files, ...newFiles];
+    await project.save();
+
+    await project.populate('files.uploadedBy', 'name email');
+
+    res.status(200).json({
+      success: true,
+      message: `${newFiles.length} file(s) uploaded successfully`,
+      data: project.files
+    });
+  } catch (error) {
+    console.error('Upload files error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error uploading files',
       error: error.message
     });
   }
@@ -433,7 +493,6 @@ exports.deleteProject = async (req, res) => {
       });
     }
 
-    // Check if project has tasks
     const taskCount = await Task.countDocuments({ project: project._id });
     if (taskCount > 0) {
       return res.status(400).json({
@@ -474,7 +533,6 @@ exports.assignTeam = async (req, res) => {
       });
     }
 
-    // Verify team members exist
     if (teamMembers && teamMembers.length > 0) {
       const employees = await Employee.find({ _id: { $in: teamMembers } });
       if (employees.length !== teamMembers.length) {
@@ -485,16 +543,14 @@ exports.assignTeam = async (req, res) => {
       }
     }
 
-    // Update team
     project.team = teamMembers.map(empId => ({
       employee: empId,
-      role: 'Developer', // Default role
+      role: 'Developer',
       assignedAt: new Date()
     }));
     
     await project.save();
 
-    // Populate team data
     await project.populate({
       path: 'team.employee',
       select: 'name email userId',
@@ -530,12 +586,10 @@ exports.getProjectTimeline = async (req, res) => {
       });
     }
 
-    // Get project tasks with timeline
     const tasks = await Task.find({ project: project._id })
       .populate('assignedTo', 'name email')
       .sort({ createdAt: 1 });
 
-    // Build timeline
     const timeline = {
       project: {
         name: project.name,
@@ -586,7 +640,6 @@ exports.getProjectStats = async (req, res) => {
       });
     }
 
-    // Get task statistics
     const tasks = await Task.find({ project: project._id });
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(t => t.status === 'completed').length;
@@ -596,17 +649,14 @@ exports.getProjectStats = async (req, res) => {
       t.status !== 'completed' && new Date(t.dueDate) < new Date()
     ).length;
 
-    // Calculate progress
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-    // Calculate time metrics
     const now = new Date();
     const projectDuration = project.endDate - project.startDate;
     const elapsed = now - project.startDate;
     const timeProgress = Math.min(Math.round((elapsed / projectDuration) * 100), 100);
     const daysRemaining = Math.ceil((project.endDate - now) / (1000 * 60 * 60 * 24));
 
-    // Budget tracking
     const budgetUsed = project.spent || 0;
     const budgetProgress = project.budget > 0 ? Math.round((budgetUsed / project.budget) * 100) : 0;
 

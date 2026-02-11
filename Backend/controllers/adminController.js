@@ -1303,6 +1303,271 @@ const getDailyAttendance = async (req, res) => {
   }
 };
 // ============================================
+// ADD THESE FUNCTIONS TO projectController.js
+// ============================================
+
+// @desc    Update project progress (Admin)
+// @route   PUT /api/admin/projects/:id/progress
+// @access  Private/Admin
+exports.updateProgress = async (req, res) => {
+  try {
+    const { progress } = req.body;
+
+    if (progress < 0 || progress > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Progress must be between 0 and 100'
+      });
+    }
+
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    project.progress = progress;
+
+    // ✅ Auto-update status based on progress
+    if (progress === 100 && project.status !== 'Completed') {
+      project.status = 'Completed';
+      project.actualEndDate = new Date();
+    } else if (progress > 0 && progress < 100 && project.status === 'Planning') {
+      project.status = 'In Progress';
+    }
+
+    await project.save();
+
+    await project.populate([
+      { path: 'client', select: 'name companyName email' },
+      { path: 'projectManager', select: 'name email' }
+    ]);
+
+    // ✅ Notify client of progress update
+    try {
+      const io = getIO();
+      io.to(`client-${project.client._id}`).emit('progress-updated', {
+        projectId: project._id,
+        projectName: project.name,
+        progress: project.progress,
+        status: project.status
+      });
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Progress updated successfully',
+      data: {
+        progress: project.progress,
+        status: project.status
+      }
+    });
+  } catch (error) {
+    console.error('Update progress error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating progress',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Deliver completed project (with files/links)
+// @route   POST /api/admin/projects/:id/deliver
+// @access  Private/Admin
+exports.deliverProject = async (req, res) => {
+  try {
+    const {
+      deliveryNotes,
+      deliveryLinks
+    } = req.body;
+
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    // ✅ Handle file uploads (delivery files)
+    let deliveryFiles = [];
+    if (req.files && req.files.length > 0) {
+      deliveryFiles = req.files.map(file => ({
+        name: file.originalname,
+        url: `/uploads/projects/${file.filename}`,
+        uploadedBy: req.user.id,
+        uploadedAt: new Date(),
+        isDelivery: true // ✅ Mark as delivery file
+      }));
+      console.log('📦 Delivery files uploaded:', deliveryFiles.length);
+    }
+
+    // ✅ Add delivery files to project
+    project.files = [...project.files, ...deliveryFiles];
+
+    // ✅ Create deliverable entry
+    const deliverable = {
+      name: 'Final Delivery',
+      description: deliveryNotes || 'Project completed and delivered',
+      fileUrl: deliveryLinks || '',
+      status: 'Submitted',
+      submittedAt: new Date()
+    };
+
+    project.deliverables.push(deliverable);
+
+    // ✅ Update project status
+    project.status = 'Completed';
+    project.progress = 100;
+    project.actualEndDate = new Date();
+
+    await project.save();
+
+    await project.populate([
+      { path: 'client', select: 'name companyName email' },
+      { path: 'files.uploadedBy', select: 'name email' }
+    ]);
+
+    // ✅ Notify client
+    try {
+      const io = getIO();
+      io.to(`client-${project.client._id}`).emit('project-delivered', {
+        projectId: project._id,
+        projectName: project.name,
+        deliveryFiles: deliveryFiles,
+        deliveryNotes: deliveryNotes
+      });
+
+      // ✅ Send email notification (optional)
+      // await sendDeliveryEmail(project.client.email, project.name, deliveryNotes);
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Project delivered successfully',
+      data: {
+        project: project,
+        deliveryFiles: deliveryFiles
+      }
+    });
+  } catch (error) {
+    console.error('Deliver project error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error delivering project',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Respond to client feedback
+// @route   PUT /api/admin/projects/:id/feedback/:feedbackId
+// @access  Private/Admin
+exports.respondToFeedback = async (req, res) => {
+  try {
+    const { response } = req.body;
+
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found'
+      });
+    }
+
+    const feedback = project.feedback.id(req.params.feedbackId);
+
+    if (!feedback) {
+      return res.status(404).json({
+        success: false,
+        message: 'Feedback not found'
+      });
+    }
+
+    feedback.adminResponse = response;
+    feedback.respondedAt = new Date();
+    feedback.respondedBy = req.user.id;
+    feedback.status = 'Reviewed';
+
+    await project.save();
+
+    await project.populate('feedback.respondedBy', 'name email');
+
+    // ✅ Notify client
+    try {
+      const io = getIO();
+      io.to(`client-${project.client}`).emit('feedback-responded', {
+        projectId: project._id,
+        feedbackId: feedback._id,
+        response: response
+      });
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Response submitted successfully',
+      data: feedback
+    });
+  } catch (error) {
+    console.error('Respond to feedback error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error responding to feedback',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get all feedback for admin
+// @route   GET /api/admin/feedback
+// @access  Private/Admin
+exports.getAllFeedback = async (req, res) => {
+  try {
+    const projects = await Project.find({ 'feedback.0': { $exists: true } })
+      .populate('client', 'name companyName email')
+      .populate('feedback.submittedBy', 'name email')
+      .populate('feedback.respondedBy', 'name email')
+      .select('name client feedback')
+      .sort({ 'feedback.submittedAt': -1 });
+
+    const allFeedback = [];
+    projects.forEach(project => {
+      project.feedback.forEach(fb => {
+        allFeedback.push({
+          ...fb.toObject(),
+          projectName: project.name,
+          projectId: project._id
+        });
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      count: allFeedback.length,
+      data: allFeedback
+    });
+  } catch (error) {
+    console.error('Get all feedback error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching feedback',
+      error: error.message
+    });
+  }
+};
+// ============================================
 // EXPORTS
 // ============================================
 module.exports = {

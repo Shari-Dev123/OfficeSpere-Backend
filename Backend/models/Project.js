@@ -25,7 +25,7 @@ const projectSchema = new mongoose.Schema(
     projectManager: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Employee',
-      required: false, // Changed to optional - admin can assign later
+      required: false,
     },
     team: [
       {
@@ -118,6 +118,7 @@ const projectSchema = new mongoose.Schema(
         feedback: String,
       },
     ],
+    // ✅ FILES ARRAY - For project-related files
     files: [
       {
         name: String,
@@ -136,7 +137,7 @@ const projectSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
-    // NEW: Admin requests from client
+    // ✅ ADMIN REQUESTS FROM CLIENT
     adminRequests: [
       {
         requestType: {
@@ -161,6 +162,56 @@ const projectSchema = new mongoose.Schema(
         status: {
           type: String,
           enum: ['Pending', 'In Progress', 'Resolved', 'Rejected'],
+          default: 'Pending'
+        },
+        adminResponse: String,
+        respondedAt: Date,
+        respondedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User'
+        }
+      }
+    ],
+    // ✅ CLIENT FEEDBACK (NEW)
+    feedback: [
+      {
+        type: {
+          type: String,
+          enum: ['general', 'quality', 'communication', 'timeline', 'suggestion', 'complaint'],
+          default: 'general'
+        },
+        subject: {
+          type: String,
+          required: true
+        },
+        message: {
+          type: String,
+          required: true
+        },
+        rating: {
+          type: Number,
+          min: 1,
+          max: 5,
+          required: true
+        },
+        satisfactionLevel: {
+          type: Number,
+          min: 1,
+          max: 10,
+          default: 5
+        },
+        submittedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Client',
+          required: true
+        },
+        submittedAt: {
+          type: Date,
+          default: Date.now
+        },
+        status: {
+          type: String,
+          enum: ['Pending', 'Reviewed', 'Resolved'],
           default: 'Pending'
         },
         adminResponse: String,
